@@ -352,6 +352,7 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
     <div class="screen" id="s-presupuesto"></div>
     <div class="screen" id="s-subs"></div>
     <div class="screen" id="s-trabajo"></div>
+    <div class="screen" id="s-semanal"></div>
     <div class="screen" id="s-tarjeta"></div>
     <div class="screen" id="s-ajustes"></div>
   </main>
@@ -1118,6 +1119,92 @@ function aplicarTema(t,rerender){
   if(rerender){ save(); refresh(); }
 }
 
+/* ═══════════════ BALANCE SEMANAL ═══════════════ */
+function semanaFin(ini){
+  var d=new Date(Date.parse(ini+"T12:00:00")+6*86400000);
+  return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate());
+}
+function etiquetaSemana(ini){
+  var f=semanaFin(ini), a=ini.split("-"), b=f.split("-");
+  return (+a[2])+" "+MS[+a[1]-1].toLowerCase()+" a "+(+b[2])+" "+MS[+b[1]-1].toLowerCase();
+}
+// Ninas es inversion, no consumo: no entra en el balance de la semana
+function semanas(){
+  var W={};
+  function toca(k){ if(!W[k]) W[k]={inc:0,exp:0,h:0}; return W[k]; }
+  D.expenses.forEach(function(e){
+    if(e.category==="Ninas") return;
+    toca(weekStartOf(e.date)).exp+=toUSD(e.amount,e.currency);
+  });
+  D.income.forEach(function(i){ toca(weekStartOf(i.date)).inc+=toUSD(i.amount,i.currency); });
+  D.cafe_hours.forEach(function(h){ toca(weekStartOf(h.date)).h+=h.hours; });
+  toca(weekStart());
+  return Object.keys(W).sort().reverse().map(function(k){
+    var o=W[k]; o.ini=k; o.neto=o.inc-o.exp; return o;
+  });
+}
+function rSemanal(){
+  var lista=semanas(), actual=weekStart();
+  var esta=lista.filter(function(w){return w.ini===actual;})[0]||{inc:0,exp:0,h:0,neto:0};
+  var cerradas=lista.filter(function(w){return w.ini!==actual;});
+  var prom=cerradas.length? cerradas.reduce(function(a,w){return a+w.neto;},0)/cerradas.length : 0;
+  var verdes=cerradas.filter(function(w){return w.neto>=0;}).length;
+  var mx=1;
+  lista.forEach(function(w){ mx=Math.max(mx,w.inc,w.exp); });
+
+  el("s-semanal").innerHTML=
+    '<div class="hero" style="background:linear-gradient(160deg,'
+     +(esta.neto>=0?T.heroPos:T.heroNeg)+' 0%,var(--card) 58%);border-color:'
+     +(esta.neto>=0?T.bordePos:T.bordeNeg)+'">'
+     +'<div class="hero-l">Esta semana</div>'
+     +'<div class="hero-v num '+(esta.neto>=0?"g":"r")+'">'
+     +(esta.neto>=0?"+":"")+money(esta.neto)+'</div>'
+     +'<div class="hero-s">'+etiquetaSemana(actual)+'</div>'
+     +'<div class="hero-row">'
+      +'<div class="hero-chip"><div class="l">Entró</div><div class="v num g">'+kmoney(esta.inc)+'</div></div>'
+      +'<div class="hero-chip"><div class="l">Salió</div><div class="v num r">'+kmoney(esta.exp)+'</div></div>'
+      +'<div class="hero-chip"><div class="l">Horas</div><div class="v num">'+esta.h+'h</div></div>'
+     +'</div></div>'
+
+    +'<div class="grid2" style="margin-top:16px">'
+     +'<div class="tile"><div class="l">Promedio semanal</div>'
+     +'<div class="v num '+(prom>=0?"g":"r")+'">'+(prom>=0?"+":"")+money(prom)+'</div>'
+     +'<div class="s">'+cerradas.length+' semanas cerradas</div></div>'
+     +'<div class="tile"><div class="l">En verde</div>'
+     +'<div class="v num">'+verdes+' de '+cerradas.length+'</div>'
+     +'<div class="s">'+(cerradas.length?Math.round(verdes/cerradas.length*100):0)+'% de las semanas</div></div>'
+    +'</div>'
+
+    +'<div class="sec">Semana por semana</div>'
+    +lista.map(function(w){
+      var esActual=w.ini===actual;
+      var col=w.neto>=0?"var(--grn)":"var(--red)";
+      return '<div class="card" style="margin-bottom:10px;padding:15px 16px'
+       +(esActual?";border-color:"+T.lima:"")+'">'
+       +'<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">'
+        +'<div style="flex:1"><div style="font-size:14px;font-weight:650;letter-spacing:-.2px">'
+        +etiquetaSemana(w.ini)+(esActual?" · ahora":"")+'</div>'
+        +'<div style="font-size:11.5px;color:var(--tx3)">'
+        +(w.h>0? w.h+"h trabajadas" : "sin turnos")+'</div></div>'
+        +'<div class="num" style="font-size:17px;font-weight:750;letter-spacing:-.4px;color:'+col+'">'
+        +(w.neto>=0?"+":"")+money(w.neto)+'</div></div>'
+       // dos barras: lo que entró contra lo que salió
+       +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+        +'<span class="num" style="font-size:10.5px;color:var(--tx3);width:52px">Entró</span>'
+        +'<div class="track" style="flex:1;margin:0"><div class="fill" style="width:'
+        +(w.inc/mx*100).toFixed(1)+'%;background:var(--grn)"></div></div>'
+        +'<span class="num" style="font-size:11px;width:72px;text-align:right">'+money(w.inc)+'</span></div>'
+       +'<div style="display:flex;align-items:center;gap:8px">'
+        +'<span class="num" style="font-size:10.5px;color:var(--tx3);width:52px">Salió</span>'
+        +'<div class="track" style="flex:1;margin:0"><div class="fill" style="width:'
+        +(w.exp/mx*100).toFixed(1)+'%;background:var(--red)"></div></div>'
+        +'<span class="num" style="font-size:11px;width:72px;text-align:right">'+money(w.exp)+'</span></div>'
+      +'</div>';
+    }).join("")
+    +'<div class="note">Semanas de lunes a domingo. No cuenta la división Ninas, '
+    +'que es inversión y no gasto corriente.</div>';
+}
+
 /* ═══════════════ PRESUPUESTO ═══════════════ */
 function gastoMesCat(cat,m){
   return D.expenses.filter(function(e){
@@ -1330,8 +1417,8 @@ function areaChart(vals,color){
 var TITLES={resumen:"Resumen",movs:"Movimientos",tarjetas:"Tarjetas",portafolio:"Portafolio",
   mas:"Más",cobrar:"Por cobrar",pagar:"Por pagar",horas:"Horas café",ajustes:"Ajustes",
   precios:"Precios",presupuesto:"Presupuesto",subs:"Suscripciones",tarjeta:"Tarjeta",
-  trabajo:"Trabajo"};
-var SUBS={cobrar:1,pagar:1,horas:1,ajustes:1,precios:1,presupuesto:1,subs:1,tarjeta:1,trabajo:1};
+  trabajo:"Trabajo",semanal:"Balance semanal"};
+var SUBS={cobrar:1,pagar:1,horas:1,ajustes:1,precios:1,presupuesto:1,subs:1,tarjeta:1,trabajo:1,semanal:1};
 function go(s){
   screen=s;
   document.querySelectorAll(".screen").forEach(function(x){x.classList.remove("on");});
@@ -1349,7 +1436,7 @@ function go(s){
 function render(s){
   ({resumen:rResumen,movs:rMovs,tarjetas:rCards,portafolio:rPort,mas:rMas,
     cobrar:rCobrar,pagar:rPagar,horas:rHoras,ajustes:rAjustes,precios:rPrecios,
-    presupuesto:rPresupuesto,subs:rSubs,tarjeta:rTarjeta,trabajo:rTrabajo})[s]();
+    presupuesto:rPresupuesto,subs:rSubs,tarjeta:rTarjeta,trabajo:rTrabajo,semanal:rSemanal})[s]();
 }
 function refresh(){render(screen);}
 
@@ -1396,7 +1483,7 @@ function rResumen(){
     +'</div></div>'
 
    +'<div class="sec" style="margin-top:24px">Presupuesto'
-   +'<button onclick="go(\'presupuesto\')">Ajustar &rsaquo;</button></div>'
+   +'<button onclick="go(\'semanal\')">Ver semanas &rsaquo;</button></div>'
    +weekBox()
    +'<div class="sec">Mes</div>'
    +'<div class="mp"><button onclick="setMonth(shiftMonth(curMonth,-1))">‹</button>'
@@ -1644,6 +1731,7 @@ function rMas(){
     +mi("⏱",T.org,"Trabajo",h+"h","go('trabajo')")
     +mi("📈",T.blu,"Precios",D.prices.length+"","go('precios')")
     +'</div><div class="sec">Control</div><div class="menu">'
+    +mi("📆",T.blu,"Balance semanal","","go('semanal')")
     +mi("🎯",T.lima,"Presupuesto",money(presupuestoTotal()),"go('presupuesto')")
     +mi("🔁",T.ylw,"Suscripciones",
         money(subsAgrupadas().reduce(function(a,o){return a+o.prom;},0))+"/mes","go('subs')")
