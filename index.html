@@ -1331,6 +1331,10 @@ function semanas(){
   });
   D.cafe_hours.forEach(function(h){ toca(weekStartOf(h.date)).h+=h.hours; });
   toca(weekStart());
+  // el salario (horas x tarifa) cuenta como dinero "entrado" en todas las semanas,
+  // encima de cualquier ingreso ya registrado (tips, pagos sueltos, etc.)
+  var r=tarifa();
+  Object.keys(W).forEach(function(k){ W[k].inc+=W[k].h*r; });
   return Object.keys(W).sort().reverse().map(function(k){
     var o=W[k]; o.ini=k; o.neto=o.inc-o.exp; return o;
   });
