@@ -471,6 +471,7 @@ function normalize(d){
   d.expenses=d.expenses||[]; d.income=d.income||[]; d.receivables=d.receivables||[];
   d.payables=d.payables||[]; d.cards=d.cards||[]; d.investments=d.investments||[];
   d.assets=d.assets||[]; d.cafe_hours=d.cafe_hours||[]; d.prices=d.prices||[]; d.solana=d.solana||[];
+  d.solana.forEach(function(e){ if(e.balance===undefined && e.amount!==undefined) e.balance=Math.abs(e.amount); });
   d.settings=Object.assign({fx:4100,rate:17,weekly:250,theme:'claro'},d.settings||{});
   d.settings.budgets=d.settings.budgets||{};
   d.cards.forEach(function(c){ c.promos=c.promos||[]; c.cashback=c.cashback||[];
@@ -913,97 +914,111 @@ function agregarSaava(kind){
 }
 
 /* ═══════════════ BOT SOLANA ═══════════════ */
-// registro manual, en su propio arreglo: no toca gastos ni ingresos personales
-var _solGano=true;
-function setSolGano(v){
-  _solGano=v;
-  var b=document.querySelectorAll("#sol-seg button");
-  if(b[0])b[0].classList.toggle("on",v); if(b[1])b[1].classList.toggle("on",!v);
+// se registra el SALDO de la cuenta cada vez que lo revisas (no un delta a mano);
+// la app calcula sola cuánto ganó o perdió comparando contra el registro anterior.
+function solanaOrdenado(){
+  // sort() es estable: si dos registros tienen la misma fecha, se respeta el orden
+  // en que los guardaste (el ultimo que anotaste queda al final, no al azar).
+  return D.solana.slice().sort(function(a,b){return a.date.localeCompare(b.date);});
+}
+function solanaUltimo(){ var l=solanaOrdenado(); return l.length?l[l.length-1]:null; }
+function solanaDeltas(){
+  var l=solanaOrdenado(), out=[];
+  for(var i=1;i<l.length;i++){
+    out.push({entry:l[i],prev:l[i-1],
+      delta:toUSD(l[i].balance,l[i].currency)-toUSD(l[i-1].balance,l[i-1].currency)});
+  }
+  return out;
+}
+function solanaCambioMes(m){
+  var l=solanaOrdenado();
+  var idxMes=[]; l.forEach(function(e,i){ if(monthOf(e.date)===m) idxMes.push(i); });
+  if(!idxMes.length) return 0;
+  var ultimoIx=idxMes[idxMes.length-1], baseIx=idxMes[0]>0?idxMes[0]-1:idxMes[0];
+  return toUSD(l[ultimoIx].balance,l[ultimoIx].currency)-toUSD(l[baseIx].balance,l[baseIx].currency);
 }
 function sheetSolana(id){
   var e=id?D.solana.filter(function(x){return x.id===id;})[0]:null;
-  _solGano = e? e.amount>=0 : true;
-  sheet(e?"Editar día":"Registrar día",
-    '<div class="seg mini" id="sol-seg" style="margin-bottom:6px">'
-     +'<button class="'+(_solGano?"on":"")+'" onclick="setSolGano(true)">Ganó</button>'
-     +'<button class="'+(!_solGano?"on":"")+'" onclick="setSolGano(false)">Perdió</button>'
-    +'</div>'
-    +'<div class="amt"><span class="cur">$</span><input id="f-samt" inputmode="decimal" placeholder="0" '
-    +'value="'+(e?Math.abs(e.amount):"")+'" oninput="fitAmt(this)"></div>'
+  sheet(e?"Editar registro":"Actualizar saldo del bot",
+    '<div class="amt"><span class="cur">$</span><input id="f-sbal" inputmode="decimal" placeholder="0" '
+    +'value="'+(e?e.balance:"")+'" oninput="fitAmt(this)"></div>'
     +fText("f-sdate","Fecha",e?e.date:today(),"","date")
-    +fText("f-snote","Nota (opcional)",e?e.note:"","ej: pump SOL, bajada fuerte…"),
+    +fText("f-snote","Nota (opcional)",e?e.note:"","ej: 1.375 SOL, retiré ganancias…"),
     btns("guardarSolana("+(id?"'"+id+"'":"null")+")", id?"delRec('solana','"+id+"')":null));
-  setTimeout(function(){var i=el("f-samt"); if(i) fitAmt(i);},0);
+  setTimeout(function(){var i=el("f-sbal"); if(i) fitAmt(i);},0);
 }
 function guardarSolana(id){
-  var a=num("f-samt"); if(a==null||a<0) return toast("Monto inválido");
-  var monto=_solGano?a:-a, dt=val("f-sdate"), nota=val("f-snote");
+  var b=num("f-sbal"); if(b==null||b<0) return toast("Saldo inválido");
+  var dt=val("f-sdate"), nota=val("f-snote");
   if(!dt) return toast("Falta la fecha");
   if(id){ var e=D.solana.filter(function(x){return x.id===id;})[0];
-    e.amount=monto; e.date=dt; e.note=nota; }
-  else D.solana.push({id:uid(),date:dt,amount:monto,currency:"USD",note:nota});
+    e.balance=b; e.date=dt; e.note=nota; }
+  else D.solana.push({id:uid(),date:dt,balance:b,currency:"USD",note:nota});
   save(); closeSheet(); refresh();
-  toast(monto>=0?"Día ganador guardado ✓":"Día registrado ✓");
+  toast("Saldo guardado ✓");
 }
 function rSolana(){
-  var arr=D.solana.slice().sort(function(a,b){return b.date.localeCompare(a.date);});
-  var total=sumUSD(D.solana), m=monthOf(today());
-  var mesArr=D.solana.filter(function(e){return monthOf(e.date)===m;});
-  var totalMes=sumUSD(mesArr), dias=D.solana.length;
-  var ganadores=D.solana.filter(function(e){return e.amount>0;}).length;
-  var winRate=dias?Math.round(ganadores/dias*100):0;
-  var mejor=dias?D.solana.reduce(function(a,b){
-    return toUSD(b.amount,b.currency)>toUSD(a.amount,a.currency)?b:a;}):null;
-  var peor=dias?D.solana.reduce(function(a,b){
-    return toUSD(b.amount,b.currency)<toUSD(a.amount,a.currency)?b:a;}):null;
-
-  var ultimos=arr.slice(0,14).slice().reverse();
-  var mx=Math.max.apply(null,ultimos.map(function(e){return Math.abs(toUSD(e.amount,e.currency));}).concat([1]));
+  var l=solanaOrdenado(), ultimo=solanaUltimo();
+  var saldo=ultimo?toUSD(ultimo.balance,ultimo.currency):0;
+  var deltas=solanaDeltas();
+  var ultimoDelta=deltas.length?deltas[deltas.length-1]:null;
+  var m=monthOf(today()), cambioMes=solanaCambioMes(m);
+  var winRate=deltas.length?Math.round(deltas.filter(function(d){return d.delta>0;}).length/deltas.length*100):null;
+  var mejor=deltas.length?deltas.reduce(function(a,b){return b.delta>a.delta?b:a;}):null;
+  var peor=deltas.length?deltas.reduce(function(a,b){return b.delta<a.delta?b:a;}):null;
+  var serie=l.map(function(e){return toUSD(e.balance,e.currency);});
+  var tendenciaArriba = serie.length<2 || serie[serie.length-1]>=serie[0];
 
   el("s-solana").innerHTML=
     '<div class="hero" style="background:linear-gradient(160deg,'
-     +(total>=0?T.heroPos:T.heroNeg)+' 0%,var(--card) 58%);border-color:'
-     +(total>=0?T.bordePos:T.bordeNeg)+'">'
-     +'<div class="hero-l">Bot Solana · desde que registras</div>'
-     +'<div class="hero-v num '+(total>=0?"g":"r")+'">'+(total>=0?"+":"")+money(total)+'</div>'
-     +'<div class="hero-s">'+dias+' día'+(dias===1?"":"s")+' registrado'+(dias===1?"":"s")+'</div>'
+     +(tendenciaArriba?T.heroPos:T.heroNeg)+' 0%,var(--card) 58%);border-color:'
+     +(tendenciaArriba?T.bordePos:T.bordeNeg)+'">'
+     +'<div class="hero-l">Bot Solana · saldo actual</div>'
+     +'<div class="hero-v num">'+(ultimo?money(saldo):"—")+'</div>'
+     +'<div class="hero-s">'
+     +(!ultimo? "Sin registros todavía"
+       : '<span class="'+(ultimoDelta?(ultimoDelta.delta>=0?"g":"r"):"m")+'">'
+         +(ultimoDelta
+           ? (ultimoDelta.delta>=0?"▲ +":"▼ ")+money(Math.abs(ultimoDelta.delta))+" desde "+dayLabel(ultimoDelta.prev.date)
+           : "primer registro · "+dayLabel(ultimo.date))
+         +'</span>')
+     +'</div>'
      +'<div class="hero-row">'
-      +'<div class="hero-chip"><div class="l">Este mes</div><div class="v num '+(totalMes>=0?"g":"r")+'">'
-      +(totalMes>=0?"+":"")+kmoney(totalMes)+'</div></div>'
-      +'<div class="hero-chip"><div class="l">Días en verde</div><div class="v num">'+winRate+'%</div></div>'
-      +'<div class="hero-chip"><div class="l">Registros</div><div class="v num">'+dias+'</div></div>'
+      +'<div class="hero-chip"><div class="l">Este mes</div><div class="v num '+(cambioMes>=0?"g":"r")+'">'
+      +(cambioMes>=0?"+":"")+kmoney(cambioMes)+'</div></div>'
+      +'<div class="hero-chip"><div class="l">Días en verde</div><div class="v num">'
+      +(winRate==null?"—":winRate+"%")+'</div></div>'
+      +'<div class="hero-chip"><div class="l">Registros</div><div class="v num">'+l.length+'</div></div>'
      +'</div></div>'
 
-    +'<button class="btn" style="width:100%;margin-top:16px" onclick="sheetSolana()">+ Registrar día</button>'
+    +'<button class="btn" style="width:100%;margin-top:16px" onclick="sheetSolana()">+ Actualizar saldo</button>'
 
-    +(ultimos.length?'<div class="sec">Últimos días</div><div class="card"><div class="bars">'
-      +ultimos.map(function(e){
-        var v=toUSD(e.amount,e.currency), d=new Date(e.date+"T12:00:00");
-        return '<div class="bar-c"><div class="bar-s">'
-         +'<div class="bar" style="height:'+(Math.abs(v)/mx*100).toFixed(1)+'%;background:'
-         +(v>=0?"var(--grn)":"var(--red)")+'"></div></div>'
-         +'<div class="bar-l">'+d.getDate()+'</div></div>';
-      }).join("")+'</div></div>':"")
+    +(serie.length>1?'<div class="sec">Evolución</div><div class="card" style="padding:16px 16px 8px">'
+      +areaChart(serie,tendenciaArriba?T.grn:T.red)+'</div>':"")
 
-    +(mejor&&peor&&dias>1?'<div class="grid2" style="margin-top:14px">'
-      +'<div class="tile"><div class="l">Mejor día</div><div class="v num g">+'
-      +money(toUSD(mejor.amount,mejor.currency))+'</div><div class="s">'+dayLabel(mejor.date)+'</div></div>'
-      +'<div class="tile"><div class="l">Peor día</div><div class="v num r">'
-      +money(toUSD(peor.amount,peor.currency))+'</div><div class="s">'+dayLabel(peor.date)+'</div></div>'
+    +(mejor&&peor&&deltas.length>1?'<div class="grid2" style="margin-top:14px">'
+      +'<div class="tile"><div class="l">Mejor cambio</div><div class="v num g">+'+money(mejor.delta)
+      +'</div><div class="s">'+dayLabel(mejor.entry.date)+'</div></div>'
+      +'<div class="tile"><div class="l">Peor cambio</div><div class="v num r">'+money(peor.delta)
+      +'</div><div class="s">'+dayLabel(peor.entry.date)+'</div></div>'
      +'</div>':"")
 
     +'<div class="sec">Historial</div>'
     +'<div class="card" style="padding:6px 14px">'
-    +(arr.length?'<div class="list">'+arr.map(function(e){
-       var v=toUSD(e.amount,e.currency);
+    +(l.length?'<div class="list">'+l.slice().reverse().map(function(e){
+       var d=deltas.filter(function(x){return x.entry.id===e.id;})[0];
        return '<div class="row" onclick="sheetSolana(\''+e.id+'\')">'
-        +'<div class="ico" style="background:'+(v>=0?T.grn:T.red)+'1f">'+(v>=0?"📈":"📉")+'</div>'
+        +'<div class="ico" style="background:'+(d?(d.delta>=0?T.grn:T.red):T.cyn)+'1f">'
+        +(d?(d.delta>=0?"📈":"📉"):"🪙")+'</div>'
         +'<div class="row-m"><div class="row-t">'+dayLabel(e.date)+'</div>'
-        +'<div class="row-s">'+(e.note?esc(e.note):(v>=0?"Día ganador":"Día perdedor"))+'</div></div>'
-        +'<div class="row-v num '+(v>=0?"g":"r")+'">'+(v>=0?"+":"")+money(v)+'</div></div>';
+        +'<div class="row-s">'+(e.note?esc(e.note):(d?"vs. "+dayLabel(d.prev.date):"primer registro"))+'</div></div>'
+        +'<div class="row-v num">'+money(toUSD(e.balance,e.currency))
+        +(d?'<span class="sub" style="color:'+(d.delta>=0?"var(--grn)":"var(--red)")+'">'
+           +(d.delta>=0?"+":"")+money(d.delta)+'</span>':'')
+        +'</div></div>';
      }).join("")+'</div>'
      :'<div class="empty"><div class="e">🪙</div><div class="t">Sin registros</div>'
-      +'<div class="s">Anota tu primer día</div></div>')
+      +'<div class="s">Anota el saldo de hoy</div></div>')
     +'</div>'
     +'<div class="note">Registro manual — esta app no se conecta a tu bot en el VPS. '
     +'No cuenta como gasto ni ingreso personal en el resto de la app.</div>';
@@ -1687,6 +1702,37 @@ function rResumen(){
      +'<div style="margin:10px -4px -4px">'+areaChart(series,net>=0?T.grn:T.red)+'</div>'
    +'</div>'
 
+   +(function(){
+       var saavaMes=saldoSaava(curMonth);
+       var solUlt=solanaUltimo(), solSaldo=solUlt?toUSD(solUlt.balance,solUlt.currency):null;
+       var solCambio=solanaCambioMes(curMonth);
+       return '<div class="sec">Negocios</div>'
+        +'<div class="grid2" style="margin-bottom:16px">'
+         +'<div class="tile" onclick="go(\'saava\')"><div class="l">💼 Saava</div>'
+         +'<div class="v num '+(saavaMes>=0?"g":"r")+'">'+(saavaMes>=0?"+":"")+money(saavaMes)+'</div>'
+         +'<div class="s">'+monthLabel(curMonth)+'</div></div>'
+         +'<div class="tile" onclick="go(\'solana\')"><div class="l">🪙 Bot Solana</div>'
+         +'<div class="v num">'+(solSaldo==null?"—":money(solSaldo))+'</div>'
+         +'<div class="s">'+(solUlt?(solCambio>=0?"+":"")+money(solCambio)+" este mes":"sin registros")+'</div></div>'
+        +'</div>';
+     })()
+   +(function(){
+       var per=sumUSD(D.income.filter(function(i){return !i.venture && monthOf(i.date)===curMonth;}));
+       var sav=sumUSD(saavaIngresos(curMonth));
+       var sol=solanaCambioMes(curMonth);
+       var mx=Math.max(Math.abs(per),Math.abs(sav),Math.abs(sol),1);
+       function fila(nombre,val){
+         var col=val>=0?"var(--grn)":"var(--red)";
+         return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+          +'<span class="num" style="font-size:11px;color:var(--tx3);width:82px">'+nombre+'</span>'
+          +'<div class="track" style="flex:1;margin:0"><div class="fill" style="width:'
+          +(Math.abs(val)/mx*100).toFixed(1)+'%;background:'+col+'"></div></div>'
+          +'<span class="num" style="font-size:11.5px;width:78px;text-align:right;color:'+col+'">'
+          +(val>=0?"+":"")+money(val)+'</span></div>';
+       }
+       return '<div class="sec">Fuentes de ingreso · '+monthLabel(curMonth)+'</div>'
+        +'<div class="card">'+fila("Personal",per)+fila("Saava",sav)+fila("Bot Solana",sol)+'</div>';
+     })()
    +'<div class="sec">Ingresos vs gastos<button onclick="go(\'movs\')">Ver todo</button></div>'
    +'<div class="card"><div class="bars">'+bars+'</div>'
      +'<div style="display:flex;gap:16px;justify-content:center;margin-top:12px;font-size:11px;color:var(--tx3)">'
@@ -1913,7 +1959,7 @@ function rMas(){
     +mi("📄",T.red,"Por pagar",money(tot.pag),"go('pagar')")
     +mi("⏱",T.org,"Trabajo",h+"h","go('trabajo')")
     +mi("💼",T.ind,"Saava",(saavaMes>=0?"+":"")+money(saavaMes),"go('saava')")
-    +mi("🪙",T.cyn,"Bot Solana",(sumUSD(D.solana)>=0?"+":"")+money(sumUSD(D.solana)),"go('solana')")
+    +mi("🪙",T.cyn,"Bot Solana",(function(){var u=solanaUltimo();return u?money(toUSD(u.balance,u.currency)):"—";})(),"go('solana')")
     +mi("📈",T.blu,"Precios",D.prices.length+"","go('precios')")
     +'</div><div class="sec">Control</div><div class="menu">'
     +mi("📆",T.blu,"Balance semanal","","go('semanal')")
@@ -1954,7 +2000,7 @@ function rDebt(kind){
       return '<div class="row" onclick="editDebt(\''+kind+'\',\''+r.id+'\')">'
        +'<div class="ico" style="background:'+(pos?T.grn+"1f":T.red+"1f")+'">'+(pos?"🤝":"📄")+'</div>'
        +'<div class="row-m"><div class="row-t">'+esc(r.debtor)+'</div>'
-       +'<div class="row-s">'+esc(r.concept)+'</div></div>'
+       +'<div class="row-s">'+esc(r.concept)+(r.vence?" · "+esc(r.vence):"")+'</div></div>'
        +'<div class="row-v num '+(pos?"g":"r")+'">'+fmt(r.amount,r.currency)
        +(r.currency==="COP"?'<span class="sub">'+money(toUSD(r.amount,"COP"))+' USD</span>':'')
        +'</div></div>';
@@ -2361,16 +2407,19 @@ function editDebt(kind,id){
   _cur=r?r.currency:"USD";
   sheet(r?"Editar":"Nuevo "+(kind==="cobrar"?"por cobrar":"por pagar"),
     fAmount(r?r.amount:null,_cur)+fText("f-who","Persona",r?r.debtor:"")
-    +fText("f-con","Concepto",r?r.concept:""),
+    +fText("f-con","Concepto",r?r.concept:"")
+    +fText("f-venc","Cuándo (opcional)",r?r.vence:"","fin de mes, semanal, al entregar…"),
     btns("saveDebt('"+kind+"',"+(id?"'"+id+"'":"null")+")",
          id?"delRec('"+(kind==="cobrar"?"receivables":"payables")+"','"+id+"')":null));
 }
 function saveDebt(kind,id){
   var arr=kind==="cobrar"?D.receivables:D.payables;
   var a=num("f-amount"), w=val("f-who"); if(!a||!w) return toast("Falta monto o persona");
+  var venc=val("f-venc");
   if(id){ var r=arr.filter(function(x){return x.id===id;})[0];
-    r.amount=a;r.debtor=w;r.concept=val("f-con");r.currency=_cur; }
-  else arr.push({id:uid(),debtor:w,concept:val("f-con"),amount:a,currency:_cur});
+    r.amount=a;r.debtor=w;r.concept=val("f-con");r.currency=_cur;
+    if(venc) r.vence=venc; else delete r.vence; }
+  else arr.push({id:uid(),debtor:w,concept:val("f-con"),amount:a,currency:_cur,vence:venc||undefined});
   save(); closeSheet(); refresh(); toast("Guardado ✓");
 }
 function editCard(id){
