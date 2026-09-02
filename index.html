@@ -446,7 +446,7 @@ var CATS={
   "Salud":{e:"💊",c:"#0F7A46",s:"Salud"},         "Vivienda":{e:"🏠",c:"#B5326E",s:"Vivienda"},
   "Otros":{e:"📦",c:"#7A8070",s:"Otros"},
   // inversión para comprar el negocio: va en verde lima para que resalte en la dona
-  "Ninas":{e:"🍬",c:"#4A7000",s:"Ninas"}, "Saava":{e:"💼",c:"#4338CA",s:"Saava"}
+  "Ninas":{e:"🍬",c:"#4A7000",s:"Ninas"}, "Saava":{e:"💼",c:"#4338CA",s:"Saava"}, "Sequo":{e:"📦",c:"#B84A1E",s:"Sequo"}
 };
 var PAL=["#4A7000","#2563C4","#B5326E","#0F7A46","#C06A00","#6D3FBF","#0B6E7D","#8A6A00"];
 var MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -1101,7 +1101,7 @@ function rSubs(){
 /* ═══════════════ TRABAJO ═══════════════ */
 function tarifa(){return D.settings.rate||0;}
 // Ninas y Saava son inversion / costo de negocio: no cuentan como gasto personal
-function esInversion(cat){return cat==="Ninas"||cat==="Saava";}
+function esInversion(cat){return cat==="Ninas"||cat==="Saava"||cat==="Sequo";}
 function esPropina(src){return /tip|propina/i.test(src||"");}
 function propinasDia(ds){
   return D.income.filter(function(i){return i.date===ds && esPropina(i.source);})
@@ -1276,11 +1276,11 @@ function migrarCategorias(d){
 /* los colores de gráficas viven en JS, así que hay dos juegos completos */
 var PALETAS={
   claro:{ grn:"#0F7A46", red:"#CE2F35", org:"#C06A00", blu:"#2563C4", pur:"#6D3FBF",
-          cyn:"#0B6E7D", ylw:"#8A6A00", pnk:"#B5326E", rosa:"#D14B8F", gris:"#7A8070", lima:"#4A7000", ind:"#4338CA", indTx:"#FFFFFF",
+          cyn:"#0B6E7D", ylw:"#8A6A00", pnk:"#B5326E", rosa:"#D14B8F", gris:"#7A8070", lima:"#4A7000", ind:"#4338CA", seq:"#B84A1E", indTx:"#FFFFFF",
           track:"#E4E7DB", heroPos:"#E6F5EC", heroNeg:"#FBE9EA",
           bordePos:"rgba(15,122,70,.22)", bordeNeg:"rgba(206,47,53,.22)" },
   oscuro:{ grn:"#3DDC97", red:"#FF5A5F", org:"#FFA83D", blu:"#5B9DFF", pur:"#B98CFF",
-          cyn:"#4FD6E8", ylw:"#FFD84D", pnk:"#FF6FA5", rosa:"#FF8FC4", gris:"#9A9AA4", lima:"#C8FF3D", ind:"#818CF8", indTx:"#14163A",
+          cyn:"#4FD6E8", ylw:"#FFD84D", pnk:"#FF6FA5", rosa:"#FF8FC4", gris:"#9A9AA4", lima:"#C8FF3D", ind:"#818CF8", seq:"#FF8A4C", indTx:"#14163A",
           track:"#25252E", heroPos:"#12211B", heroNeg:"#251518",
           bordePos:"rgba(61,220,151,.18)", bordeNeg:"rgba(255,90,95,.18)" }
 };
@@ -1297,7 +1297,7 @@ function aplicarTema(t,rerender){
   document.documentElement.setAttribute("data-theme",ef);
   CATS["Transporte"].c=T.blu; CATS["Ocio"].c=T.pur;
   CATS["Servicios"].c=T.cyn;    CATS["Suscripciones"].c=T.ylw; CATS["Salud"].c=T.grn;
-  CATS["Vivienda"].c=T.pnk;     CATS["Otros"].c=T.gris;        CATS["Ninas"].c=T.lima; CATS["Saava"].c=T.ind;
+  CATS["Vivienda"].c=T.pnk;     CATS["Otros"].c=T.gris;        CATS["Ninas"].c=T.lima; CATS["Saava"].c=T.ind; CATS["Sequo"].c=T.seq;
   CATS["Mercado"].c=T.org;      CATS["Restaurante"].c=T.rosa;
   PAL=[T.lima,T.blu,T.pnk,T.grn,T.org,T.pur,T.cyn,T.ylw];
   if(rerender){ save(); refresh(); }
