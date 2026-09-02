@@ -1377,7 +1377,7 @@ function rSemanal(){
         +'<div style="flex:1"><div style="font-size:14px;font-weight:650;letter-spacing:-.2px">'
         +etiquetaSemana(w.ini)+(esActual?" · ahora":"")+'</div>'
         +'<div style="font-size:11.5px;color:var(--tx3)">'
-        +(w.h>0? w.h+"h"+(w.tips>0?" · "+money(w.tips)+" en propinas":"") : "sin turnos")+'</div>'
+        +(w.h>0? w.h+"h ("+money(w.h*tarifa())+" en salario)"+(w.tips>0?" · "+money(w.tips)+" en propinas":"") : "sin turnos")+'</div>'
         +(w.saavaInc>0||w.saavaExp>0? '<div style="font-size:11px;color:'+T.ind+';margin-top:2px">'
           +'Saava: +'+money(w.saavaInc)+' / -'+money(w.saavaExp)+'</div>' : "")
         +'</div>'
