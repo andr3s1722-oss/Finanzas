@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -295,6 +295,8 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
   opacity:0;pointer-events:none;transition:.25s;box-shadow:0 10px 28px rgba(24,28,16,.22);white-space:nowrap;}
 #toast.on{opacity:1;transform:translate(-50%,0);}
 </style>
+<link rel="stylesheet" href="./modern.css">
+<script src="./finance.js"></script>
 </head>
 <body>
 
@@ -335,9 +337,9 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
 </div>
 <div id="app">
   <header>
-    <button class="hd-b" id="hd-l" style="display:none">‹</button>
+    <button class="hd-b" id="hd-l" aria-label="Volver" style="display:none">‹</button>
     <div id="hd-t">Resumen</div>
-    <button class="hd-b" id="hd-r">⚙</button>
+    <button class="hd-b" id="hd-r" aria-label="Ajustes">⚙</button>
   </header>
   <main>
     <div class="screen on" id="s-resumen"></div>
@@ -348,6 +350,8 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
     <div class="screen" id="s-cobrar"></div>
     <div class="screen" id="s-pagar"></div>
     <div class="screen" id="s-horas"></div>
+    <div class="screen" id="s-colombia"></div>
+    <div class="screen" id="s-alertas"></div>
     <div class="screen" id="s-precios"></div>
     <div class="screen" id="s-presupuesto"></div>
     <div class="screen" id="s-subs"></div>
@@ -358,7 +362,7 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
     <div class="screen" id="s-tarjeta"></div>
     <div class="screen" id="s-ajustes"></div>
   </main>
-  <button id="fab">+</button>
+  <button id="fab" aria-label="Añadir registro">+</button>
   <nav>
     <button data-s="resumen" class="on"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="8" rx="1.6"/><rect x="14" y="3" width="7" height="5" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="11" width="7" height="10" rx="1.6"/></svg>Resumen</button>
     <button data-s="movs"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Movs</button>
@@ -371,7 +375,7 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
 <div id="bd"></div>
 <div id="sh">
   <div class="sh-grab"><i></i></div>
-  <div class="sh-h"><div class="sh-t" id="sh-t"></div><button class="sh-x" id="sh-x">✕</button></div>
+  <div class="sh-h"><div class="sh-t" id="sh-t"></div><button class="sh-x" id="sh-x" aria-label="Cerrar">✕</button></div>
   <div class="sh-b" id="sh-b"></div>
   <div class="sh-f" id="sh-f"></div>
 </div>
@@ -659,13 +663,13 @@ function weekPortion(e,ws){
 function weekSpent(){
   var ws=weekStart();
   return D.expenses.reduce(function(s,e){
-    return esInversion(e.category)? s : s+weekPortion(e,ws);},0);
+    return Finance.area(e)!=="Personal"? s : s+weekPortion(e,ws);},0);
 }
 // gastos que siguen pesando en esta semana por venir repartidos
 function repartidosActivos(){
   var ws=weekStart();
   return D.expenses.filter(function(e){
-    return e.spread>1 && !esInversion(e.category) && weekPortion(e,ws)>0;});
+    return e.spread>1 && Finance.area(e)==="Personal" && weekPortion(e,ws)>0;});
 }
 function weekBox(extra,id){
   var b=D.settings.weekly||0;
@@ -689,7 +693,9 @@ function updWeek(){
   var box=el("wkb-live"); if(!box) return;
   var b=D.settings.weekly||0; if(!b) return;
   var v=parseMonto((el("f-amount")||{}).value);
-  var extra=isNaN(v)?0:toUSD(v,_cur)/(_spread>1?_spread:1);
+  var area=Finance.area({area:el("f-area")?val("f-area"):"",category:_cat});
+  var dt=el("f-date")?val("f-date"):today();
+  var extra=isNaN(v)||area!=="Personal"||!dt?0:weekPortion({date:dt,amount:v,currency:_cur,spread:_spread},weekStart());
   box.innerHTML=weekInner(weekSpent(),b,extra);
 }
 function dayLabel(dt){
@@ -848,11 +854,11 @@ function borrarCash(id){
 /* ═══════════════ SAAVA ═══════════════ */
 function saavaIngresos(m){
   return D.income.filter(function(i){
-    return i.venture==="Saava" && (m?monthOf(i.date)===m:true);});
+    return Finance.area(i)==="Saava" && (m?monthOf(i.date)===m:true);});
 }
 function saavaGastos(m){
   return D.expenses.filter(function(e){
-    return e.category==="Saava" && (m?monthOf(e.date)===m:true);});
+    return Finance.area(e)==="Saava" && (m?monthOf(e.date)===m:true);});
 }
 function saldoSaava(m){
   return sumUSD(saavaIngresos(m))-sumUSD(saavaGastos(m));
@@ -901,7 +907,7 @@ function rSaava(){
     +'<div class="sec">Movimientos de '+monthLabel(m)+'</div>'
     +'<div class="card" style="padding:6px 14px">'+movRows(movs)+'</div>'
     +'<div class="note">Lo de Saava no cuenta como gasto personal en Resumen, Presupuesto '
-    +'ni Balance semanal — solo aparece aquí y en el total del mes.</div>';
+    +'ni Balance semanal — también aparece al filtrar Saava y en el flujo total de cada semana.</div>';
 }
 function agregarSaava(kind){
   if(kind==="ingreso"){
@@ -1116,7 +1122,7 @@ function propinasMes(m){
     .reduce(function(s,i){return s+toUSD(i.amount,i.currency);},0);
 }
 function gastoDia(ds){
-  return D.expenses.filter(function(e){return e.date===ds && !esInversion(e.category);})
+  return D.expenses.filter(function(e){return e.date===ds && Finance.area(e)==="Personal";})
     .reduce(function(s,e){return s+toUSD(e.amount,e.currency);},0);
 }
 function horasDia(ds){
@@ -1137,14 +1143,14 @@ function rTrabajo(){
   var hs=D.cafe_hours.filter(function(h){return monthOf(h.date)===m;});
   var horasMes=hs.reduce(function(s,h){return s+h.hours;},0);
   var salMes=horasMes*r, tipsMes=propinasMes(m), ganMes=salMes+tipsMes;
-  var gasMes=D.expenses.filter(function(e){return monthOf(e.date)===m && !esInversion(e.category);})
+  var gasMes=D.expenses.filter(function(e){return monthOf(e.date)===m && Finance.area(e)==="Personal";})
     .reduce(function(s,e){return s+toUSD(e.amount,e.currency);},0);
   var netoMes=ganMes-gasMes;
 
   var sem={};
   hs.forEach(function(h){var w=weekStartOf(h.date); sem[w]=sem[w]||{h:0,g:0}; sem[w].h+=h.hours;});
   D.expenses.forEach(function(e){
-    if(monthOf(e.date)!==m || esInversion(e.category)) return;
+    if(monthOf(e.date)!==m || Finance.area(e)!=="Personal") return;
     var w=weekStartOf(e.date); sem[w]=sem[w]||{h:0,g:0};
     sem[w].g+=toUSD(e.amount,e.currency);
   });
@@ -1156,7 +1162,7 @@ function rTrabajo(){
 
   var dias={};
   hs.forEach(function(h){dias[h.date]=1;});
-  D.expenses.forEach(function(e){if(monthOf(e.date)===m && !esInversion(e.category)) dias[e.date]=1;});
+  D.expenses.forEach(function(e){if(monthOf(e.date)===m && Finance.area(e)==="Personal") dias[e.date]=1;});
   D.income.forEach(function(i){if(monthOf(i.date)===m && esPropina(i.source)) dias[i.date]=1;});
   var ds=Object.keys(dias).sort().reverse();
 
@@ -1164,7 +1170,7 @@ function rTrabajo(){
     '<div class="hero" style="background:linear-gradient(160deg,'
      +(netoMes>=0?T.heroPos:T.heroNeg)+' 0%,var(--card) 58%);border-color:'
      +(netoMes>=0?T.bordePos:T.bordeNeg)+'">'
-     +'<div class="hero-l">Balance de '+monthLabel(m)+'</div>'
+     +'<div class="hero-l">Balance estimado de '+monthLabel(m)+'</div>'
      +'<div class="hero-v num '+(netoMes>=0?"g":"r")+'">'+(netoMes>=0?"+":"")+money(netoMes)+'</div>'
      +'<div class="hero-s">'+horasMes+'h a '+money(r)+'/hora, más propinas</div>'
      +'<div class="hero-row">'
@@ -1176,6 +1182,7 @@ function rTrabajo(){
       +'cuya fuente diga “tips” o “propina”. Este mes: '+money(tipsMes)
       +' ('+(ganMes>0?(tipsMes/ganMes*100).toFixed(0):0)+'% de lo que ganaste).</div>' : "")
 
+    +'<div class="note" style="margin-top:12px">Esta vista estima lo ganado usando la tarifa actual. Consulta Mi semana para ver los cobros reales sin sumar el salario dos veces.</div>'+planningLinks()
     +'<div class="sec">Tarifa y turnos<button onclick="editHora()">+ Turno</button></div>'
     +'<div class="f"><label>Cuanto te pagan por hora (USD)</label>'
     +'<input id="f-rate" inputmode="decimal" value="'+r+'" onchange="guardarTarifa()"></div>'
@@ -1214,7 +1221,7 @@ function rTrabajo(){
      }).join("")+'</div>'
      :'<div class="empty"><div class="e">☕</div><div class="t">Sin turnos</div></div>')
     +'</div>'
-    +'<div class="note">El gasto excluye Ninas y Saava: son inversion / costos de negocio, no consumo personal.</div>';
+    +'<div class="note">El gasto incluye únicamente movimientos del área Personal.</div>';
 }
 function guardarTarifa(){
   var v=parseMonto(el("f-rate").value);
@@ -1314,94 +1321,13 @@ function etiquetaSemana(ini){
 }
 // Ninas es inversion, no consumo: no entra en el balance de la semana
 function semanas(){
-  var W={};
-  function toca(k){ if(!W[k]) W[k]={inc:0,exp:0,h:0,tips:0,saavaInc:0,saavaExp:0}; return W[k]; }
-  D.expenses.forEach(function(e){
-    if(esInversion(e.category)){
-      if(e.category==="Saava") toca(weekStartOf(e.date)).saavaExp+=toUSD(e.amount,e.currency);
-      return;
-    }
-    toca(weekStartOf(e.date)).exp+=toUSD(e.amount,e.currency);
+  var keys={}; keys[weekStart()]=1;
+  D.expenses.concat(D.income,D.cafe_hours).forEach(function(o){keys[Finance.monday(o.date)]=1;});
+  return Object.keys(keys).sort().reverse().map(function(k){
+    var w=Finance.weekly(D,k),saava=Finance.weekly(D,k,"Saava");
+    return {ini:k,inc:w.received,exp:w.spent,h:w.hours,tips:w.tips,neto:w.net,
+      saavaInc:saava.received,saavaExp:saava.spent};
   });
-  D.income.forEach(function(i){
-    var o=toca(weekStartOf(i.date));
-    o.inc+=toUSD(i.amount,i.currency);
-    if(esPropina(i.source)) o.tips+=toUSD(i.amount,i.currency);
-    if(i.venture==="Saava") o.saavaInc+=toUSD(i.amount,i.currency);
-  });
-  D.cafe_hours.forEach(function(h){ toca(weekStartOf(h.date)).h+=h.hours; });
-  toca(weekStart());
-  // el salario (horas x tarifa) cuenta como dinero "entrado" en todas las semanas,
-  // encima de cualquier ingreso ya registrado (tips, pagos sueltos, etc.)
-  var r=tarifa();
-  Object.keys(W).forEach(function(k){ W[k].inc+=W[k].h*r; });
-  return Object.keys(W).sort().reverse().map(function(k){
-    var o=W[k]; o.ini=k; o.neto=o.inc-o.exp; return o;
-  });
-}
-function rSemanal(){
-  var lista=semanas(), actual=weekStart();
-  var esta=lista.filter(function(w){return w.ini===actual;})[0]||{inc:0,exp:0,h:0,neto:0};
-  var cerradas=lista.filter(function(w){return w.ini!==actual;});
-  var prom=cerradas.length? cerradas.reduce(function(a,w){return a+w.neto;},0)/cerradas.length : 0;
-  var verdes=cerradas.filter(function(w){return w.neto>=0;}).length;
-  var mx=1;
-  lista.forEach(function(w){ mx=Math.max(mx,w.inc,w.exp); });
-
-  el("s-semanal").innerHTML=
-    '<div class="hero" style="background:linear-gradient(160deg,'
-     +(esta.neto>=0?T.heroPos:T.heroNeg)+' 0%,var(--card) 58%);border-color:'
-     +(esta.neto>=0?T.bordePos:T.bordeNeg)+'">'
-     +'<div class="hero-l">Esta semana</div>'
-     +'<div class="hero-v num '+(esta.neto>=0?"g":"r")+'">'
-     +(esta.neto>=0?"+":"")+money(esta.neto)+'</div>'
-     +'<div class="hero-s">'+etiquetaSemana(actual)+'</div>'
-     +'<div class="hero-row">'
-      +'<div class="hero-chip"><div class="l">Entró</div><div class="v num g">'+kmoney(esta.inc)+'</div></div>'
-      +'<div class="hero-chip"><div class="l">Salió</div><div class="v num r">'+kmoney(esta.exp)+'</div></div>'
-      +'<div class="hero-chip"><div class="l">Horas</div><div class="v num">'+esta.h+'h</div></div>'
-     +'</div></div>'
-
-    +'<div class="grid2" style="margin-top:16px">'
-     +'<div class="tile"><div class="l">Promedio semanal</div>'
-     +'<div class="v num '+(prom>=0?"g":"r")+'">'+(prom>=0?"+":"")+money(prom)+'</div>'
-     +'<div class="s">'+cerradas.length+' semanas cerradas</div></div>'
-     +'<div class="tile"><div class="l">En verde</div>'
-     +'<div class="v num">'+verdes+' de '+cerradas.length+'</div>'
-     +'<div class="s">'+(cerradas.length?Math.round(verdes/cerradas.length*100):0)+'% de las semanas</div></div>'
-    +'</div>'
-
-    +'<div class="sec">Semana por semana</div>'
-    +lista.map(function(w){
-      var esActual=w.ini===actual;
-      var col=w.neto>=0?"var(--grn)":"var(--red)";
-      return '<div class="card" style="margin-bottom:10px;padding:15px 16px'
-       +(esActual?";border-color:"+T.lima:"")+'">'
-       +'<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">'
-        +'<div style="flex:1"><div style="font-size:14px;font-weight:650;letter-spacing:-.2px">'
-        +etiquetaSemana(w.ini)+(esActual?" · ahora":"")+'</div>'
-        +'<div style="font-size:11.5px;color:var(--tx3)">'
-        +(w.h>0? w.h+"h ("+money(w.h*tarifa())+" en salario)"+(w.tips>0?" · "+money(w.tips)+" en propinas":"") : "sin turnos")+'</div>'
-        +(w.saavaInc>0||w.saavaExp>0? '<div style="font-size:11px;color:'+T.ind+';margin-top:2px">'
-          +'Saava: +'+money(w.saavaInc)+' / -'+money(w.saavaExp)+'</div>' : "")
-        +'</div>'
-        +'<div class="num" style="font-size:17px;font-weight:750;letter-spacing:-.4px;color:'+col+'">'
-        +(w.neto>=0?"+":"")+money(w.neto)+'</div></div>'
-       // dos barras: lo que entró contra lo que salió
-       +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
-        +'<span class="num" style="font-size:10.5px;color:var(--tx3);width:52px">Entró</span>'
-        +'<div class="track" style="flex:1;margin:0"><div class="fill" style="width:'
-        +(w.inc/mx*100).toFixed(1)+'%;background:var(--grn)"></div></div>'
-        +'<span class="num" style="font-size:11px;width:72px;text-align:right">'+money(w.inc)+'</span></div>'
-       +'<div style="display:flex;align-items:center;gap:8px">'
-        +'<span class="num" style="font-size:10.5px;color:var(--tx3);width:52px">Salió</span>'
-        +'<div class="track" style="flex:1;margin:0"><div class="fill" style="width:'
-        +(w.exp/mx*100).toFixed(1)+'%;background:var(--red)"></div></div>'
-        +'<span class="num" style="font-size:11px;width:72px;text-align:right">'+money(w.exp)+'</span></div>'
-      +'</div>';
-    }).join("")
-    +'<div class="note">Semanas de lunes a domingo. No cuentan Ninas ni Saava: '
-    +'son inversión o costos de negocio, no gasto personal.</div>';
 }
 
 /* ═══════════════ PRESUPUESTO ═══════════════ */
@@ -1613,11 +1539,11 @@ function areaChart(vals,color){
 }
 
 /* ═══════════════ NAV ═══════════════ */
-var TITLES={resumen:"Resumen",movs:"Movimientos",tarjetas:"Tarjetas",portafolio:"Portafolio",
+var TITLES={colombia:"Plan Colombia",alertas:"Alertas",resumen:"Resumen",movs:"Movimientos",tarjetas:"Tarjetas",portafolio:"Portafolio",
   mas:"Más",cobrar:"Por cobrar",pagar:"Por pagar",horas:"Horas café",ajustes:"Ajustes",
   precios:"Precios",presupuesto:"Presupuesto",subs:"Suscripciones",tarjeta:"Tarjeta",
   trabajo:"Trabajo",semanal:"Balance semanal",saava:"Saava",solana:"Bot Solana"};
-var SUBS={cobrar:1,pagar:1,horas:1,ajustes:1,precios:1,presupuesto:1,subs:1,tarjeta:1,trabajo:1,semanal:1,saava:1,solana:1};
+var SUBS={colombia:1,alertas:1,cobrar:1,pagar:1,horas:1,ajustes:1,precios:1,presupuesto:1,subs:1,tarjeta:1,trabajo:1,semanal:1,saava:1,solana:1};
 function go(s){
   screen=s;
   document.querySelectorAll(".screen").forEach(function(x){x.classList.remove("on");});
@@ -1633,7 +1559,7 @@ function go(s){
   window.scrollTo(0,0);
 }
 function render(s){
-  ({resumen:rResumen,movs:rMovs,tarjetas:rCards,portafolio:rPort,mas:rMas,
+  ({colombia:rColombia,alertas:rAlertas,resumen:rResumen,movs:rMovs,tarjetas:rCards,portafolio:rPort,mas:rMas,
     cobrar:rCobrar,pagar:rPagar,horas:rHoras,ajustes:rAjustes,precios:rPrecios,
     presupuesto:rPresupuesto,subs:rSubs,tarjeta:rTarjeta,trabajo:rTrabajo,semanal:rSemanal,saava:rSaava,
     solana:rSolana})[s]();
@@ -1642,7 +1568,7 @@ function refresh(){render(screen);}
 
 /* ═══════════════ RESUMEN ═══════════════ */
 function rResumen(){
-  var T=totals(), md=monthData(curMonth), net=md.inc-md.exp;
+  var tot=totals(), md=monthData(curMonth), net=md.inc-md.exp;
   var cats={};
   md.e.forEach(function(e){cats[e.category]=(cats[e.category]||0)+toUSD(e.amount,e.currency);});
   var items=Object.keys(cats).map(function(k){
@@ -1672,17 +1598,20 @@ function rResumen(){
   }).join("");
 
   el("s-resumen").innerHTML=
+   '<div class="dash-intro"><div class="eyebrow">A$ · Tu vida financiera</div><h1>Todo en su lugar.</h1><p>Tu presente, tus proyectos y lo que viene.</p></div>'+planningLinks()+
    '<div class="hero">'
     +'<div class="hero-l">Patrimonio neto</div>'
-    +'<div class="hero-v num '+(T.nw>=0?"a":"r")+'">'+money(T.nw)+'</div>'
+    +'<div class="hero-v num '+(tot.nw>=0?"a":"r")+'">'+money(tot.nw)+'</div>'
     +'<div class="hero-s">Portafolio + activos + por cobrar − deudas</div>'
     +'<div class="hero-row">'
-      +'<div class="hero-chip"><div class="l">Portafolio</div><div class="v num b">'+kmoney(T.inv)+'</div></div>'
-      +'<div class="hero-chip"><div class="l">Cobrar</div><div class="v num g">'+kmoney(T.cob)+'</div></div>'
-      +'<div class="hero-chip"><div class="l">Deudas</div><div class="v num r">'+kmoney(T.deu+T.pag)+'</div></div>'
+      +'<div class="hero-chip"><div class="l">Portafolio</div><div class="v num b">'+kmoney(tot.inv)+'</div></div>'
+      +'<div class="hero-chip"><div class="l">Cobrar</div><div class="v num g">'+kmoney(tot.cob)+'</div></div>'
+      +'<div class="hero-chip"><div class="l">Deudas</div><div class="v num r">'+kmoney(tot.deu+tot.pag)+'</div></div>'
     +'</div></div>'
 
-   +'<div class="sec" style="margin-top:24px">Presupuesto'
+   +areaOverview()+
+   '<div class="sec">Atención hoy</div>'+alertCards()+
+   '<div class="sec" style="margin-top:24px">Presupuesto'
    +'<button onclick="go(\'semanal\')">Ver semanas &rsaquo;</button></div>'
    +weekBox()
    +'<div class="sec">Mes</div>'
@@ -1721,7 +1650,7 @@ function rResumen(){
         +'</div>';
      })()
    +(function(){
-       var per=sumUSD(D.income.filter(function(i){return !i.venture && monthOf(i.date)===curMonth;}));
+       var per=sumUSD(D.income.filter(function(i){return Finance.area(i)==="Personal" && monthOf(i.date)===curMonth;}));
        var sav=sumUSD(saavaIngresos(curMonth));
        var sol=solanaCambioMes(curMonth);
        var mx=Math.max(Math.abs(per),Math.abs(sav),Math.abs(sol),1);
@@ -1786,7 +1715,7 @@ function movRows(list){
       return '<div class="row" onclick="editExp(\''+o.id+'\')">'
         +'<div class="ico" style="background:'+c.c+'1f">'+c.e+'</div>'
         +'<div class="row-m"><div class="row-t">'+esc(o.desc)+'</div>'
-        +'<div class="row-s">'+esc(o.category)+' · '+dayLabel(o.date)+'</div></div>'
+        +'<div class="row-s">'+esc(Finance.area(o))+' · '+esc(o.category)+' · '+dayLabel(o.date)+'</div></div>'
         +'<div class="row-v num">−'+fmt(o.amount,o.currency)
         +(o.currency==="COP"?'<span class="sub">'+money(toUSD(o.amount,"COP"))+' USD</span>':'')
         +'</div></div>';
@@ -1795,7 +1724,7 @@ function movRows(list){
       +'<div class="ico" style="background:'+(o.venture?T.ind+"1f":"#0F7A461f")+'">'
       +(o.venture?"💼":"💵")+'</div>'
       +'<div class="row-m"><div class="row-t">'+esc(o.source)+'</div>'
-      +'<div class="row-s">'+(o.venture?esc(o.venture):"Ingreso")+' · '+dayLabel(o.date)+'</div></div>'
+      +'<div class="row-s">'+esc(Finance.area(o))+' · '+dayLabel(o.date)+'</div></div>'
       +'<div class="row-v num g">+'+fmt(o.amount,o.currency)
       +(o.currency==="COP"?'<span class="sub">'+money(toUSD(o.amount,"COP"))+' USD</span>':'')
       +'</div></div>';
@@ -1810,6 +1739,7 @@ function rMovs(){
     if(!q||norm(e.desc).indexOf(q)>=0||norm(e.category).indexOf(q)>=0) a.push({k:"e",o:e});});
   if(movFilter!=="e") D.income.forEach(function(i){
     if(!q||norm(i.source).indexOf(q)>=0) a.push({k:"i",o:i});});
+  a=a.filter(function(x){return areaFilter==="Todos"||Finance.area(x.o)===areaFilter;});
   a.sort(function(x,y){return y.o.date.localeCompare(x.o.date);});
 
   var tE=a.filter(function(x){return x.k==="e";}).reduce(function(s,x){return s+toUSD(x.o.amount,x.o.currency);},0);
@@ -1818,7 +1748,7 @@ function rMovs(){
   var groups={},order=[];
   a.forEach(function(m){ if(!groups[m.o.date]){groups[m.o.date]=[];order.push(m.o.date);} groups[m.o.date].push(m); });
 
-  el("s-movs").innerHTML=
+  el("s-movs").innerHTML=areaChips(areaFilter,"filterArea")+
     '<input class="srch" id="mv-q" placeholder="Buscar…" value="'+esc(movSearch)+'">'
    +'<div class="seg mini" style="margin-bottom:14px">'
      +['all|Todos','e|Gastos','i|Ingresos'].map(function(x){var p=x.split("|");
@@ -1843,16 +1773,16 @@ function rMovs(){
 
 /* ═══════════════ TARJETAS ═══════════════ */
 function rCards(){
-  var T=totals();
+  var tot=totals();
   var totalLim=sumUSD(D.cards,function(c){return c.limit;});
-  var use=totalLim>0?T.deu/totalLim*100:0;
+  var use=totalLim>0?tot.deu/totalLim*100:0;
   el("s-tarjetas").innerHTML=
     '<div class="card" style="margin-bottom:16px">'
      +'<div style="display:flex;align-items:center;gap:16px">'
       +'<div>'+ring(use,use>70?T.red:use>40?T.org:T.grn)+'</div>'
       +'<div style="flex:1"><div class="l" style="font-size:10px;font-weight:700;letter-spacing:.08em;'
       +'text-transform:uppercase;color:var(--tx3)">Deuda total</div>'
-      +'<div class="num" style="font-size:24px;font-weight:750;letter-spacing:-.8px;color:var(--red)">'+money(T.deu)+'</div>'
+      +'<div class="num" style="font-size:24px;font-weight:750;letter-spacing:-.8px;color:var(--red)">'+money(tot.deu)+'</div>'
       +'<div style="font-size:11.5px;color:var(--tx3)">de '+money(totalLim,0)+' de cupo · '+use.toFixed(0)+'% usado</div></div>'
      +'</div></div>'
     +'<div class="sec">Mis tarjetas<button onclick="editCard()">+ Agregar</button></div>'
@@ -1879,7 +1809,7 @@ function rCards(){
 
 /* ═══════════════ PORTAFOLIO ═══════════════ */
 function rPort(){
-  var T=totals(), pl=T.inv-T.invC, plp=T.invC>0?pl/T.invC*100:0;
+  var tot=totals(), pl=tot.inv-tot.invC, plp=tot.invC>0?pl/tot.invC*100:0;
   var items=D.investments.slice().sort(function(a,b){
     return toUSD(b.currentValue,b.currency)-toUSD(a.currentValue,a.currency);});
   // un color por posición (no por tipo) para que la dona y la lista se puedan leer
@@ -1890,17 +1820,17 @@ function rPort(){
     '<div class="hero" style="background:linear-gradient(160deg,'+(pl>=0?T.heroPos:T.heroNeg)+' 0%,var(--card) 55%);'
      +'border-color:'+(pl>=0?T.bordePos:T.bordeNeg)+'">'
      +'<div class="hero-l">Valor del portafolio</div>'
-     +'<div class="hero-v num">'+money(T.inv)+'</div>'
+     +'<div class="hero-v num">'+money(tot.inv)+'</div>'
      +'<div class="hero-s '+(pl>=0?"g":"r")+'" style="font-weight:600">'
      +(pl>=0?"▲ +":"▼ ")+money(pl)+" ("+plp.toFixed(1)+'%)</div>'
      +'<div class="hero-row"><div class="hero-chip"><div class="l">Costo base</div>'
-     +'<div class="v num">'+kmoney(T.invC)+'</div></div>'
+     +'<div class="v num">'+kmoney(tot.invC)+'</div></div>'
      +'<div class="hero-chip"><div class="l">Posiciones</div><div class="v num">'+items.length+'</div></div></div>'
     +'</div>'
 
    +(items.length?'<div class="sec">Distribución</div><div class="card"><div class="donut-wrap">'
-      +'<div class="donut">'+donut(byV,T.inv)
-      +'<div class="mid"><div class="v num">'+kmoney(T.inv)+'</div><div class="l">Total</div></div></div>'
+      +'<div class="donut">'+donut(byV,tot.inv)
+      +'<div class="mid"><div class="v num">'+kmoney(tot.inv)+'</div><div class="l">Total</div></div></div>'
       +'<div class="leg">'+byV.slice(0,6).map(function(it){
         return '<div class="leg-i"><span class="leg-d" style="background:'+it.c+'"></span>'
         +'<span class="leg-n">'+esc(it.n)+'</span><span class="leg-v num">'+money(it.v)+'</span></div>';
@@ -1957,7 +1887,7 @@ function preciosResumen(){
 function rMas(){
   var tot=totals(), h=D.cafe_hours.reduce(function(s,x){return s+x.hours;},0);
   var saavaMes=saldoSaava(monthOf(today()));
-  el("s-mas").innerHTML=
+  el("s-mas").innerHTML=planningLinks()+
     '<div class="menu">'
     +mi("🤝",T.grn,"Por cobrar",money(tot.cob),"go('cobrar')")
     +mi("📄",T.red,"Por pagar",money(tot.pag),"go('pagar')")
@@ -2196,7 +2126,7 @@ function setCur(c){_cur=c;
   el("cur-USD").classList.toggle("on",c==="USD");el("cur-COP").classList.toggle("on",c==="COP");
   updWeek();}
 function fText(id,label,val,ph,type,extra){
-  return '<div class="f"><label>'+label+'</label><input id="'+id+'" type="'+(type||"text")+'" '
+  return '<div class="f"><label for="'+id+'">'+label+'</label><input id="'+id+'" type="'+(type||"text")+'" '
     +(extra||"")+' value="'+esc(val==null?"":val)+'" placeholder="'+(ph||"")+'"></div>';
 }
 function catGrid(sel){
@@ -2240,7 +2170,7 @@ function openAdd(k){
   if(addKind==="gasto"){
     body=seg+weekBox(0,"wkb-live")+quickBar()+fAmount(null,"USD")
       +fText("f-desc","Descripción","","Walmart, gasolina…",null,'oninput="autoCat()"')
-      +catGrid(_cat)
+      +catGrid(_cat)+areaField()
       +fText("f-date","Fecha",today(),"","date")
       +'<div class="f"><label>Repartir en varias semanas</label>'
       +'<div class="seg mini" id="spread-seg">'
@@ -2255,7 +2185,7 @@ function openAdd(k){
     body=seg+fAmount(null,"USD")
       +fText("f-src","Fuente","","Tips, pago café…")
       +fText("f-date","Fecha",today(),"","date")
-      +ventureToggle("");
+      +ventureToggle("")+areaField();
     foot=btns("addInc()");
   } else if(addKind==="cobrar"){
     body=seg+'<div class="seg mini" style="margin-bottom:16px">'
@@ -2326,7 +2256,7 @@ function setSpread(n){
 function addExp(){
   var a=num("f-amount"), d=val("f-desc"), dt=val("f-date");
   if(!a||!d||!dt) return toast("Falta monto, descripción o fecha");
-  D.expenses.push({id:uid(),date:dt,desc:d,amount:a,currency:_cur,category:_cat,spread:_spread});
+  D.expenses.push({id:uid(),date:dt,desc:d,amount:a,currency:_cur,category:_cat,spread:_spread,area:val("f-area")||undefined});
   save(); closeSheet(); refresh(); toast("Gasto guardado ✓");
 }
 function addInc(){
@@ -2334,6 +2264,7 @@ function addInc(){
   if(!a||!s||!dt) return toast("Falta monto, fuente o fecha");
   var o={id:uid(),date:dt,source:s,amount:a,currency:_cur};
   if(_ventureSel) o.venture=_ventureSel;
+  storeArea(o);
   D.income.push(o);
   save(); closeSheet(); refresh(); toast(_ventureSel?"Ingreso de "+_ventureSel+" guardado ✓":"Ingreso guardado ✓");
 }
@@ -2381,13 +2312,13 @@ function editExp(id){
   _cur=e.currency; _cat=e.category; _catManual=true;
   sheet("Editar gasto",
     fAmount(e.amount,e.currency)+fText("f-desc","Descripción",e.desc)
-    +catGrid(e.category)+fText("f-date","Fecha",e.date,"","date"),
+    +catGrid(e.category)+areaField(e)+fText("f-date","Fecha",e.date,"","date"),
     btns("saveExp('"+id+"')","delRec('expenses','"+id+"')"));
 }
 function saveExp(id){
   var e=D.expenses.filter(function(x){return x.id===id;})[0];
   var a=num("f-amount"); if(!a) return toast("Monto inválido");
-  e.amount=a; e.desc=val("f-desc"); e.date=val("f-date"); e.currency=_cur; e.category=_cat;
+  e.amount=a; e.desc=val("f-desc"); e.date=val("f-date"); e.currency=_cur; e.category=_cat; storeArea(e);
   save(); closeSheet(); refresh(); toast("Actualizado ✓");
 }
 function editInc(id){
@@ -2395,14 +2326,14 @@ function editInc(id){
   _cur=i.currency; _ventureSel=i.venture||"";
   sheet("Editar ingreso",
     fAmount(i.amount,i.currency)+fText("f-src","Fuente",i.source)+fText("f-date","Fecha",i.date,"","date")
-    +ventureToggle(_ventureSel),
+    +ventureToggle(_ventureSel)+areaField(i),
     btns("saveInc('"+id+"')","delRec('income','"+id+"')"));
 }
 function saveInc(id){
   var i=D.income.filter(function(x){return x.id===id;})[0];
   var a=num("f-amount"); if(!a) return toast("Monto inválido");
   i.amount=a; i.source=val("f-src"); i.date=val("f-date"); i.currency=_cur;
-  if(_ventureSel) i.venture=_ventureSel; else delete i.venture;
+  if(_ventureSel) i.venture=_ventureSel; else delete i.venture; storeArea(i);
   save(); closeSheet(); refresh(); toast("Actualizado ✓");
 }
 function editDebt(kind,id){
@@ -2577,6 +2508,9 @@ function delRec(coll,id){
   save(); closeSheet(); refresh(); toast("Eliminado");
 }
 
+</script>
+<script src="./planning.js"></script>
+<script>
 /* ═══════════════ BOOT ═══════════════ */
 function start(){
   storageOK=probarStorage();

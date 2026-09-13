@@ -1,0 +1,48 @@
+/* Additional screens, keeping the original storage key and JSON collections. */
+var areaFilter='Todos', weekFilter='Todos';
+function areaField(o){return '<div class="f"><label for="f-area">Área</label><select id="f-area" onchange="updWeek()"><option value="">Automática según categoría</option>'+Finance.areas.map(function(a){return '<option'+(o&&o.area===a?' selected':'')+'>'+a+'</option>';}).join('')+'</select></div>';}
+function storeArea(o){var a=val('f-area');if(a)o.area=a;else delete o.area;}
+function areaChips(value,action){return '<div class="chips">'+['Todos'].concat(Finance.areas).map(function(a){return '<button class="chip '+(a===value?'on':'')+'" aria-pressed="'+(a===value)+'" onclick="'+action+'(\''+a+'\')">'+a+'</button>';}).join('')+'</div>';}
+function filterArea(a){areaFilter=a;go('movs');}
+function filterWeek(a){weekFilter=a;rSemanal();}
+function planningLinks(){return '<div class="dash-actions"><button onclick="go(\'semanal\')">Mi semana ↗</button><button onclick="go(\'colombia\')">Plan Colombia ↗</button><button onclick="go(\'alertas\')">Alertas · '+Finance.alerts(D,today()).length+'</button></div>';}
+function areaOverview(){
+ var md=monthData(curMonth);
+ return '<div class="sec">Tus áreas · '+monthLabel(curMonth)+'</div><div class="area-grid">'+Finance.areas.map(function(a){
+  var inc=sumUSD(md.i.filter(function(o){return Finance.area(o)===a;})),exp=sumUSD(md.e.filter(function(o){return Finance.area(o)===a;}));
+  return '<button class="card area-card" onclick="filterArea(\''+a+'\')"><span class="area-name">'+a+' ↗</span><strong class="num '+(inc-exp<0?'r':'g')+'">'+money(inc-exp)+'</strong><small>Entró '+money(inc)+' · salió '+money(exp)+'</small></button>';
+ }).join('')+'</div><div class="note" style="margin-top:10px">Flujo del mes en USD. Las posiciones de inversión y el carro se valoran en Patrimonio. Toca un área para ver sus movimientos de todas las fechas.</div>';
+}
+function alertCards(){var items=Finance.alerts(D,today());return items.length?items.map(function(a){return '<button class="card finance-alert" onclick="go(\''+a.target+'\')"><strong>'+esc(a.title)+' ↗</strong><span>'+esc(a.text)+'</span></button>';}).join(''):'<div class="card"><strong>Sin alertas con los datos registrados</strong><p class="note">Se revisan presupuesto personal, cupo, fechas de pago, flujo del mes y plan Colombia.</p></div>';}
+function rAlertas(){el('s-alertas').innerHTML='<div class="dash-intro"><div class="eyebrow">Control financiero</div><h1>Lo que merece atención</h1><p>Se actualiza al registrar movimientos. Avisos dentro de la app.</p></div>'+alertCards()+'<div class="note">Para avisos de deudas usa una fecha AAAA-MM-DD en “Cuándo”. Los vencimientos escritos como “fin de mes” se conservan, pero no generan un aviso por fecha.</div>';}
+function rSemanal(){
+ var keys={}; keys[weekStart()]=true;
+ D.income.concat(D.expenses,D.cafe_hours).forEach(function(o){keys[Finance.monday(o.date)]=true;});
+ var starts=Object.keys(keys).sort().reverse(),current=Finance.weekly(D,weekStart(),weekFilter);
+ el('s-semanal').innerHTML='<div class="dash-intro"><div class="eyebrow">Lunes a domingo · USD</div><h1>Tu semana, en claro.</h1><p>Ingresos cobrados, gastos y trabajo estimado por separado.</p></div>'+areaChips(weekFilter,'filterWeek')
+ +'<div class="hero"><div class="hero-l">Flujo registrado · '+etiquetaSemana(weekStart())+'</div><div class="hero-v num '+(current.net<0?'r':'g')+'">'+money(current.net)+'</div><div class="hero-row"><div class="hero-chip"><div class="l">Cobrado</div><div class="v num">'+money(current.received)+'</div></div><div class="hero-chip"><div class="l">Pagado</div><div class="v num">'+money(current.spent)+'</div></div><div class="hero-chip"><div class="l">Horas</div><div class="v num">'+current.hours+' h</div></div></div></div>'
+ +'<div class="dash-actions"><button onclick="editHora()">+ Registrar turno</button><button onclick="openAdd(\'ingreso\')">+ Registrar cobro</button><button onclick="go(\'trabajo\')">Detalle del trabajo ↗</button></div>'
+ +'<div class="note">El salario (horas × tarifa actual) es una estimación; no se suma a lo cobrado. Las propinas ligadas a turnos se cuentan una sola vez. Los gastos repartidos salen completos en su fecha de pago; el presupuesto conserva el reparto.</div><div class="sec">Historial semanal</div><div class="weekly-list">'
+ +starts.map(function(start){var w=Finance.weekly(D,start,weekFilter);return '<details class="card"'+(start===weekStart()?' open':'')+'><summary>'+etiquetaSemana(start)+' · '+start.slice(0,4)+' <span class="num '+(w.net<0?'r':'g')+'">'+money(w.net)+'</span></summary><div class="grid2"><div class="metric"><small>Ingresos registrados</small><strong class="num">'+money(w.received)+'</strong></div><div class="metric"><small>Gastos pagados</small><strong class="num">'+money(w.spent)+'</strong></div><div class="metric"><small>Salario estimado · '+w.hours+' h</small><strong class="num">'+money(w.salary)+'</strong></div><div class="metric"><small>Propinas incluidas en ingresos</small><strong class="num">'+money(w.tips)+'</strong></div></div>'
+ +movRows(w.income.map(function(o){return {k:'i',o:o};}).concat(w.expenses.map(function(o){return {k:'e',o:o};})).sort(function(a,b){return b.o.date.localeCompare(a.o.date);}))+'</details>';}).join('')+'</div>';
+}
+function colombiaField(key,label,value){return fText('co-'+key,label,value==null?'':value,'0','text','inputmode="decimal"');}
+function rColombia(){
+ var p=D.settings.colombia||{},r=Finance.projection(D),configured=!!D.settings.colombia;
+ var car=D.assets.filter(function(a){return /jetta/i.test(a.name||'');});
+ el('s-colombia').innerHTML='<div class="dash-intro"><div class="eyebrow">Tu próxima etapa</div><h1>Colombia, con un plan.</h1><p>Saava como fuente principal. Propinas y salario del café: $0 en este escenario.</p></div>'
+ +'<div class="warn">'+(configured?'Proyección con tus supuestos, sin rentabilidad ni crecimiento automático.':'Completa tus supuestos: los campos vacíos no son una predicción.')+' Todos los importes se introducen en USD; la equivalencia COP usa tu tasa manual de '+fx()+'.</div>'
+ +'<div class="card"><div class="f2">'+fText('co-start','Mes de regreso',p.start||shiftMonth(monthOf(today()),1),'','month')+colombiaField('movingCost','Mudanza · pago único USD',p.movingCost)+'</div><div class="f2">'
+ +colombiaField('saavaRevenue','Saava · ventas mensuales USD',p.saavaRevenue)+colombiaField('saavaCosts','Saava · costos mensuales USD',p.saavaCosts)+'</div><div class="f2">'
+ +colombiaField('livingCosts','Vida en Colombia · mensual USD',p.livingCosts)+colombiaField('otherIncome','Otros ingresos mensuales USD',p.otherIncome)+'</div><div class="f"><label for="co-reserve">Reservar deudas actuales antes de regresar</label><select id="co-reserve"><option value="yes"'+(p.reserveDebt?' selected':'')+'>Sí</option><option value="no"'+(!p.reserveDebt?' selected':'')+'>No</option></select></div><button class="btn" style="width:100%" onclick="saveColombia()">Guardar y recalcular</button></div>'
+ +'<div class="sec">Jetta · activo, no efectivo</div><div class="card"><strong class="num">'+money(car.length?sumUSD(car,function(a){return a.value;}):6000)+'</strong><p class="note">'+(car.length?'Valor registrado en patrimonio. No se suma al efectivo de esta proyección.':'Valor de referencia indicado: $6,000 USD. Aún no está registrado en patrimonio.')+'</p>'+(car.length?'':'<button class="btn gh" onclick="registerJetta()">Registrar Jetta por $6,000</button>')+'</div>'
+ +(configured?'<div class="sec">Resultado · 12 meses</div><div class="grid2"><div class="tile"><div class="l">Flujo mensual</div><div class="v num '+(r.net<0?'r':'g')+'">'+money(r.net)+'</div><div class="s">'+Math.round(r.net*fx()).toLocaleString('es-CO')+' COP</div></div><div class="tile"><div class="l">Efectivo inicial</div><div class="v num">'+money(r.initial)+'</div><div class="s">Liquidez − mudanza − reserva</div></div></div><div class="note" style="margin-top:12px">Liquidez registrada: '+money(r.liquid)+'. Reserva de deudas: '+money(p.reserveDebt?r.debt:0)+'. '+(r.runway===null?'Este escenario no consume el efectivo mes a mes.':'Cobertura aproximada: '+r.runway.toFixed(1)+' meses.')+' El efectivo inicial usa tus saldos actuales; no estima ahorros antes del regreso. Incluye impuestos y cuotas futuras dentro de los costos previstos.</div><div class="card"><table class="scenario-table"><thead><tr><th>Mes</th><th>Flujo USD</th><th>Efectivo final USD</th></tr></thead><tbody>'+r.months.map(function(m){return '<tr><td>'+monthLabel(shiftMonth(p.start,m.month-1))+'</td><td>'+money(r.net)+'</td><td class="'+(m.balance<0?'r':'g')+'">'+money(m.balance)+'</td></tr>';}).join('')+'</tbody></table></div>':'');
+}
+function saveColombia(){
+ var p=Object.assign({},D.settings.colombia||{}),valid=true;
+ ['saavaRevenue','saavaCosts','livingCosts','otherIncome','movingCost'].forEach(function(k){var raw=val('co-'+k),v=raw===''?0:parseMonto(raw);if(!Number.isFinite(v)||v<0)valid=false;p[k]=v;});
+ p.start=val('co-start');p.reserveDebt=val('co-reserve')==='yes';
+ if(!valid||!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.start))return toast('Revisa el mes y los montos: deben ser positivos o cero');
+ D.settings.colombia=p;save();rColombia();toast('Plan Colombia actualizado');
+}
+function registerJetta(){if(D.assets.some(function(a){return /jetta/i.test(a.name||'');}))return;D.assets.push({id:uid(),name:'Volkswagen Jetta',type:'Vehículo',value:6000,currency:'USD'});save();rColombia();toast('Jetta registrado en patrimonio');}
