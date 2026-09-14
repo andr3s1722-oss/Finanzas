@@ -722,17 +722,17 @@ function totals(){
   var deu=sumUSD(D.cards,function(c){return c.balance;});
   return {inv:inv,invC:invC,ass:ass,cob:cob,pag:pag,deu:deu,
           nw:inv+ass+cob-deu-pag,
-          inc:sumUSD(D.income), exp:sumUSD(D.expenses)};
+          inc:sumUSD(Finance.incomes(D)), exp:sumUSD(D.expenses)};
 }
 function monthData(m){
   var e=D.expenses.filter(function(x){return monthOf(x.date)===m;});
-  var i=D.income.filter(function(x){return monthOf(x.date)===m;});
+  var i=Finance.incomes(D).filter(function(x){return monthOf(x.date)===m;});
   return {exp:sumUSD(e),inc:sumUSD(i),e:e,i:i};
 }
 function allMonths(){
   var s={};
   D.expenses.forEach(function(x){s[monthOf(x.date)]=1;});
-  D.income.forEach(function(x){s[monthOf(x.date)]=1;});
+  Finance.incomes(D).forEach(function(x){s[monthOf(x.date)]=1;});
   s[monthOf(today())]=1;
   return Object.keys(s).sort();
 }
@@ -1182,7 +1182,7 @@ function rTrabajo(){
       +'cuya fuente diga “tips” o “propina”. Este mes: '+money(tipsMes)
       +' ('+(ganMes>0?(tipsMes/ganMes*100).toFixed(0):0)+'% de lo que ganaste).</div>' : "")
 
-    +'<div class="note" style="margin-top:12px">Esta vista estima lo ganado usando la tarifa actual. Consulta Mi semana para ver los cobros reales sin sumar el salario dos veces.</div>'+planningLinks()
+    +'<div class="note" style="margin-top:12px">Esta vista estima lo ganado usando la tarifa actual. Las horas también se suman a Personal y a los balances. No vuelvas a registrar como ingreso el pago correspondiente a estas horas.</div>'+planningLinks()
     +'<div class="sec">Tarifa y turnos<button onclick="editHora()">+ Turno</button></div>'
     +'<div class="f"><label>Cuanto te pagan por hora (USD)</label>'
     +'<input id="f-rate" inputmode="decimal" value="'+r+'" onchange="guardarTarifa()"></div>'
@@ -1650,7 +1650,7 @@ function rResumen(){
         +'</div>';
      })()
    +(function(){
-       var per=sumUSD(D.income.filter(function(i){return Finance.area(i)==="Personal" && monthOf(i.date)===curMonth;}));
+       var per=sumUSD(Finance.incomes(D).filter(function(i){return Finance.area(i)==="Personal" && monthOf(i.date)===curMonth;}));
        var sav=sumUSD(saavaIngresos(curMonth));
        var sol=solanaCambioMes(curMonth);
        var mx=Math.max(Math.abs(per),Math.abs(sav),Math.abs(sol),1);
@@ -1710,6 +1710,7 @@ function movRows(list){
   if(!list.length) return '<div class="empty"><div class="e">📭</div><div class="t">Nada por aquí</div></div>';
   return '<div class="list">'+list.map(function(m){
     var o=m.o;
+    if(o.generatedSalary) return '<button class="row" style="width:100%;text-align:left" onclick="editHora(\''+o.id+'\')"><div class="row-m"><div class="row-t">Salario por horas</div><div class="row-s">Personal · '+o.hours+' h · '+dayLabel(o.date)+'</div></div><div class="row-v num g">+'+fmt(o.amount,o.currency)+'</div></button>';
     if(m.k==="e"){
       var c=CATS[o.category]||CATS.Otros;
       return '<div class="row" onclick="editExp(\''+o.id+'\')">'
@@ -1737,7 +1738,7 @@ function rMovs(){
   var a=[];
   if(movFilter!=="i") D.expenses.forEach(function(e){
     if(!q||norm(e.desc).indexOf(q)>=0||norm(e.category).indexOf(q)>=0) a.push({k:"e",o:e});});
-  if(movFilter!=="e") D.income.forEach(function(i){
+  if(movFilter!=="e") Finance.incomes(D).forEach(function(i){
     if(!q||norm(i.source).indexOf(q)>=0) a.push({k:"i",o:i});});
   a=a.filter(function(x){return areaFilter==="Todos"||Finance.area(x.o)===areaFilter;});
   a.sort(function(x,y){return y.o.date.localeCompare(x.o.date);});

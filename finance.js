@@ -15,9 +15,12 @@ function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'
 function plus(s,n){let d=date(s);d.setDate(d.getDate()+n);return iso(d);}
 function monday(s){let d=date(s);d.setDate(d.getDate()-(d.getDay()+6)%7);return iso(d);}
 function isTip(o){return o.incomeKind==='tips'||(!o.incomeKind&&/tip|propina/i.test(o.source||''));}
+function incomes(d){
+ return d.income.concat(d.cafe_hours.map(h=>({id:h.id,date:h.date,source:'Salario por horas',amount:Number(h.hours)*Number(d.settings.rate||0),currency:'USD',area:'Personal',generatedSalary:true,hours:Number(h.hours)})));
+}
 function weekly(d,start,scope='Todos'){
  const end=plus(start,6), inside=o=>o.date>=start&&o.date<=end;
- const inc=d.income.filter(o=>inside(o)&&(scope==='Todos'||area(o)===scope));
+ const inc=incomes(d).filter(o=>inside(o)&&(scope==='Todos'||area(o)===scope));
  const exp=d.expenses.filter(o=>inside(o)&&(scope==='Todos'||area(o)===scope));
  const hours=(scope==='Todos'||scope==='Personal')?d.cafe_hours.filter(inside).reduce((s,o)=>s+Number(o.hours),0):0;
  const received=inc.reduce((s,o)=>s+usd(d,o),0), spent=exp.reduce((s,o)=>s+usd(d,o),0);
@@ -43,11 +46,11 @@ function alerts(d,today){
  if(budget>0&&allocated>=budget*.8) out.push({title:allocated>budget?'Presupuesto personal superado':'Cerca del límite semanal',text:'Asignado '+allocated.toFixed(2)+' USD de '+budget.toFixed(2)+' USD.',target:'presupuesto'});
  d.cards.forEach(c=>{if(Number(c.limit)>0&&Number(c.balance)/c.limit>=.8)out.push({title:'Poco cupo en '+c.name,text:'Has usado '+Math.round(c.balance/c.limit*100)+'% del cupo.',target:'tarjetas'});});
  d.payables.forEach(p=>{const due=p.dueDate||p.vence;if(/^\d{4}-\d{2}-\d{2}$/.test(due||'')&&due<=plus(today,7))out.push({title:due<today?'Pago vencido':'Pago próximo',text:(p.debtor||'Deuda')+' · '+due+' · '+usd(d,p).toFixed(2)+' USD.',target:'pagar'});});
- const month=today.slice(0,7), received=d.income.filter(o=>o.date.slice(0,7)===month).reduce((s,o)=>s+usd(d,o),0), spent=d.expenses.filter(o=>o.date.slice(0,7)===month).reduce((s,o)=>s+usd(d,o),0);
- if(spent>received)out.push({title:'El mes tiene flujo negativo',text:'Salidas superiores a los ingresos registrados por '+(spent-received).toFixed(2)+' USD.',target:'movs'});
+ const month=today.slice(0,7), received=incomes(d).filter(o=>o.date.slice(0,7)===month).reduce((s,o)=>s+usd(d,o),0), spent=d.expenses.filter(o=>o.date.slice(0,7)===month).reduce((s,o)=>s+usd(d,o),0);
+ if(spent>received)out.push({title:'El mes tiene balance negativo',text:'Salidas superiores a los ingresos (incluidas horas) por '+(spent-received).toFixed(2)+' USD.',target:'movs'});
  if(d.settings.colombia){let p=projection(d);if(p.net<0||p.initial<0)out.push({title:'Revisa tu plan Colombia',text:p.initial<0?'El efectivo inicial no cubre las reservas y la mudanza.':'El escenario pierde '+(-p.net).toFixed(2)+' USD al mes.',target:'colombia'});}
  return out;
 }
-const api={areas,area,usd,iso,plus,monday,isTip,weekly,projection,alerts};
+const api={incomes,areas,area,usd,iso,plus,monday,isTip,weekly,projection,alerts};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.Finance=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
