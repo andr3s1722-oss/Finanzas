@@ -423,7 +423,9 @@ var SEED = {
    "id": "p1",
    "label": "Dólar (TRM)",
    "unit": "COP",
-   "history": []
+   "history": [
+    {"d":"2026-09-15","p":3109.3}
+   ]
   },
   {
    "id": "p2",
@@ -433,7 +435,7 @@ var SEED = {
   }
  ],
  "settings": {
-  "fx": 3230.44,
+  "fx": 3109.3,
   "rate": 17,
   "weekly": 250,
   "theme": "claro",
@@ -1428,8 +1430,8 @@ function setPrecio(pr,v,fecha){
 function rPrecios(){
   var hoy=today();
   el("s-precios").innerHTML=
-    '<div class="note" style="padding-bottom:14px">Los precios se registran a mano: '
-    +'esta app no puede consultar el mercado. Toca “Actualizar” y anota los de hoy.</div>'
+    '<div class="note" style="padding-bottom:14px">La TRM oficial se actualiza automáticamente. '
+    +'Los demás precios se pueden registrar a mano con el botón “Actualizar precios”.</div>'
     +'<button class="btn" style="width:100%;margin-bottom:20px" onclick="sheetPrecios()">Actualizar precios</button>'
     +(D.prices.length? D.prices.map(function(pr){
       var u=ultimo(pr), c=cambio(pr);
@@ -2540,7 +2542,7 @@ function start(){
   el("lock").style.display="none";
   el("app").style.display="block";
   if(window.PublicSync) window.PublicSync.init({
-    data:function(){return D;},save:save,uid:uid,toast:toast,render:rPort,
+    data:function(){return D;},save:save,uid:uid,toast:toast,render:rPort,refresh:refresh,
     screen:function(){return screen;},session:function(){return publicSession;},
     setSession:function(value){publicSession=value;}
   });
