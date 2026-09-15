@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const F=require('../finance.js');
-const PublicSync=require('../public-sync.js');
+const PublicSync=require('../portfolio-bridge.js');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const empty=()=>({expenses:[],income:[],cafe_hours:[],assets:[],payables:[],cards:[],settings:{fx:4000,rate:17,weekly:250}});
 test('week boundaries across years and daylight saving',()=>{assert.equal(F.monday('2027-01-03'),'2026-12-28');assert.equal(F.plus('2026-03-02',6),'2026-03-08');assert.equal(F.monday('2026-03-09'),'2026-03-09');});

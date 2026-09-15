@@ -1,3 +1,4 @@
+/* Secure bridge between the local finance data and the Public portfolio endpoint. */
 (function(root,factory){
   var api=factory();
   if(typeof module!=="undefined"&&module.exports) module.exports=api;
