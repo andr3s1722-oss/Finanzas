@@ -1837,6 +1837,7 @@ function rPort(){
         +'<span class="leg-n">'+esc(it.n)+'</span><span class="leg-v num">'+money(it.v)+'</span></div>';
       }).join("")+'</div></div></div>':"")
 
+   +(window.PublicSync?window.PublicSync.render():"")
    +'<div class="sec">Precios<button onclick="go(\'precios\')">Ver todo &rsaquo;</button></div>'
    +preciosResumen()
    +'<div class="sec">Posiciones<button onclick="editInv()">+ Agregar</button></div>'
@@ -2511,8 +2512,11 @@ function delRec(coll,id){
 
 </script>
 <script src="./planning.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js"></script>
+<script src="./public-sync.js"></script>
 <script>
 /* ═══════════════ BOOT ═══════════════ */
+var publicSession=null;
 function start(){
   storageOK=probarStorage();
   var habia=false;
@@ -2536,6 +2540,11 @@ function start(){
   }
   el("lock").style.display="none";
   el("app").style.display="block";
+  if(window.PublicSync) window.PublicSync.init({
+    data:function(){return D;},save:save,uid:uid,toast:toast,render:rPort,
+    screen:function(){return screen;},session:function(){return publicSession;},
+    setSession:function(value){publicSession=value;}
+  });
   go("resumen");
 }
 function tryLogin(){
