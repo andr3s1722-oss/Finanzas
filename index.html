@@ -476,7 +476,7 @@ function ssSet(k,v){ try{ sessionStorage.setItem(k,v); }catch(e){} }
 function normalize(d){
   d.expenses=d.expenses||[]; d.income=d.income||[]; d.receivables=d.receivables||[];
   d.payables=d.payables||[]; d.cards=d.cards||[]; d.investments=d.investments||[];
-  d.assets=d.assets||[]; d.cafe_hours=d.cafe_hours||[]; d.prices=d.prices||[]; d.solana=d.solana||[];
+  d.assets=d.assets||[]; d.cafe_hours=d.cafe_hours||[]; d.prices=d.prices||[]; d.solana=d.solana||[]; d.subscriptions=d.subscriptions||[];
   d.solana.forEach(function(e){ if(e.balance===undefined && e.amount!==undefined) e.balance=Math.abs(e.amount); });
   d.settings=Object.assign({fx:4100,rate:17,weekly:250,theme:'claro'},d.settings||{});
   d.settings.budgets=d.settings.budgets||{};
@@ -489,7 +489,7 @@ function normalize(d){
     d.investments=d.investments.filter(function(i){return i.type!=="Vehículo"&&i.type!=="Liquidez";});
     move.forEach(function(m){d.assets.push({id:uid(),name:m.name,type:m.type,value:m.currentValue,currency:m.currency});});
   }
-  ["expenses","income","receivables","payables","cards","investments","assets","cafe_hours","prices","solana"].forEach(function(k){
+  ["expenses","income","receivables","payables","cards","investments","assets","cafe_hours","prices","solana","subscriptions"].forEach(function(k){
     d[k].forEach(function(o){if(!o.id)o.id=uid();});
   });
   migrarCategorias(d);
@@ -1079,30 +1079,69 @@ function consejosSubs(subs){
   return c;
 }
 function rSubs(){
-  var subs=subsAgrupadas(), mensual=subs.reduce(function(s,o){return s+o.prom;},0);
+  var m=monthOf(today());
+  var activas=suscripcionesEnMes(m).filter(function(s){return subEstado(s,today())!=="cancelada";});
+  var totalMes=activas.reduce(function(s,o){return s+toUSD(o.amount,o.currency);},0);
+  var pendiente=pendienteSuscripciones(m);
+  var todas=D.subscriptions.slice().sort(function(a,b){return a.activeFrom.localeCompare(b.activeFrom);});
+
   el("s-subs").innerHTML=
-    '<div class="grid2" style="margin-bottom:18px">'
-     +'<div class="tile"><div class="l">Al mes</div><div class="v num o">'+money(mensual)+'</div>'
-     +'<div class="s">'+subs.length+' activas</div></div>'
-     +'<div class="tile"><div class="l">Al año</div><div class="v num r">'+money(mensual*12)+'</div></div>'
+    '<div class="hero" style="background:linear-gradient(160deg,'+T.heroNeg+' 0%,var(--card) 55%);border-color:'+T.bordeNeg+'">'
+     +'<div class="hero-l">Activas en '+monthLabel(m)+'</div>'
+     +'<div class="hero-v num">'+activas.length+'</div>'
+     +'<div class="hero-s">'+money(totalMes)+'/mes'
+     +(pendiente>0.01?' · '+money(pendiente)+' aún sin cobrar este mes':' · ya se cobraron todas este mes')+'</div>'
     +'</div>'
-    +'<div class="sec">Consejos</div>'
-    +consejosSubs(subs).map(function(o){
-      return '<div class="'+(o.t==="warn"?"warn":"card")+'" style="margin-bottom:10px;'
-        +(o.t==="warn"?"":"font-size:12.5px;color:var(--tx2);line-height:1.5;padding:13px 15px")+'">'
-        +(o.t==="warn"?"⚠ ":"")+o.m+'</div>';}).join("")
-    +'<div class="sec">Detalle</div>'
+    +'<button class="btn" style="width:100%;margin:16px 0" onclick="sheetSub()">+ Agregar suscripción</button>'
+    +'<div class="sec">Tus suscripciones</div>'
     +'<div class="card" style="padding:6px 14px">'
-    +(subs.length?'<div class="list">'+subs.map(function(o){
-      return '<div class="row">'
-       +'<div class="ico" style="background:#8A6A001f">🔁</div>'
-       +'<div class="row-m"><div class="row-t">'+esc(o.nombre)+'</div>'
-       +'<div class="row-s">'+o.n+' cobro'+(o.n===1?"":"s")+' · último '+dayLabel(o.ultima)
-       +(o.dias>45?" · dormida":"")+'</div></div>'
-       +'<div class="row-v num">'+money(o.prom)+'<span class="sub">'+money(o.prom*12)+'/año</span></div>'
-       +'</div>';}).join("")+'</div>'
-     :'<div class="empty"><div class="e">🔁</div><div class="t">Sin suscripciones</div></div>')
-    +'</div>';
+    +(todas.length?'<div class="list">'+todas.map(function(s){
+       var estado=subEstado(s,today());
+       var col=estado==="activa"?"var(--grn)":estado==="programada"?"var(--org)":"var(--tx3)";
+       var sub;
+       if(estado==="cancelada") sub="Cancelada desde "+dayLabel(s.activeUntil);
+       else if(estado==="programada") sub="Empieza el "+dayLabel(s.activeFrom)+(s.note?" · "+esc(s.note):"");
+       else sub="Activa"+(s.activeUntil?" hasta "+dayLabel(s.activeUntil):"")+(s.note?" · "+esc(s.note):"");
+       return '<div class="row" onclick="sheetSub(\''+s.id+'\')">'
+        +'<div class="ico" style="background:'+col+'1f">'+(estado==="cancelada"?"⏹":estado==="programada"?"🕓":"🔁")+'</div>'
+        +'<div class="row-m"><div class="row-t">'+esc(s.name)+'</div>'
+        +'<div class="row-s" style="color:'+col+'">'+sub+'</div></div>'
+        +'<div class="row-v num" style="color:'+(estado==="cancelada"?"var(--tx3)":"var(--tx)")+'">'
+        +fmt(s.amount,s.currency)+'<span class="sub">/mes</span></div></div>';
+     }).join("")+'</div>'
+     :'<div class="empty"><div class="e">🔁</div><div class="t">Sin suscripciones registradas</div></div>')
+    +'</div>'
+    +'<div class="note">Esta lista es la que descuenta tu presupuesto — no se detecta sola del '
+    +'historial de gastos, la llevas tú. El cargo real, cuando llegue, sigue registrándose como '
+    +'gasto normal en Suscripciones; no lo dupliques.</div>';
+}
+function sheetSub(id){
+  var s=id?D.subscriptions.filter(function(x){return x.id===id;})[0]:null;
+  _cur=s?s.currency:"USD";
+  sheet(s?"Editar suscripción":"Nueva suscripción",
+    fText("f-subname","Nombre",s?s.name:"","Claude Pro, Hetzner…")
+    +fAmount(s?s.amount:null,_cur)
+    +fText("f-subfrom","Activa desde",s?s.activeFrom:today(),"","date")
+    +fText("f-subnote","Nota (opcional)",s?s.note:"","gratis hasta el 10, luego cobra"),
+    (id?'<button class="btn dg" onclick="cancelarSub(\''+id+'\')">'
+      +(s&&s.activeUntil?"Reactivar":"Cancelar")+'</button>':"")
+    +(id?'<button class="btn gh" style="color:var(--tx)" onclick="delRec(\'subscriptions\',\''+id+'\')">Eliminar</button>':"")
+    +'<button class="btn" onclick="guardarSub('+(id?"'"+id+"'":"null")+')">Guardar</button>');
+}
+function guardarSub(id){
+  var n=val("f-subname"), a=num("f-amount"), desde=val("f-subfrom"), nota=val("f-subnote");
+  if(!n||!a||!desde) return toast("Falta nombre, monto o fecha");
+  if(id){ var s=D.subscriptions.filter(function(x){return x.id===id;})[0];
+    s.name=n; s.amount=a; s.currency=_cur; s.activeFrom=desde; s.note=nota; }
+  else D.subscriptions.push({id:uid(),name:n,amount:a,currency:_cur,activeFrom:desde,activeUntil:null,note:nota});
+  save(); closeSheet(); refresh(); toast("Suscripción guardada ✓");
+}
+function cancelarSub(id){
+  var s=D.subscriptions.filter(function(x){return x.id===id;})[0];
+  if(s.activeUntil){ s.activeUntil=null; save(); closeSheet(); refresh(); toast("Reactivada ✓"); return; }
+  var fecha=prompt("¿Desde qué fecha se cancela? (AAAA-MM-DD)", today());
+  if(!fecha) return;
+  s.activeUntil=fecha; save(); closeSheet(); refresh(); toast("Cancelada desde "+fecha+" ✓");
 }
 
 
@@ -1333,6 +1372,35 @@ function semanas(){
 }
 
 /* ═══════════════ PRESUPUESTO ═══════════════ */
+// activa: activeFrom<=hoy y (sin activeUntil o activeUntil futuro). "programada": activeFrom en el futuro.
+// "cancelada": activeUntil ya paso.
+function subEstado(s,hoy){
+  hoy=hoy||today();
+  if(s.activeUntil && s.activeUntil<=hoy) return "cancelada";
+  if(s.activeFrom>hoy) return "programada";
+  return "activa";
+}
+// una suscripcion cuenta para el mes m si su rango [activeFrom, activeUntil) toca ese mes
+function subEnMes(s,m){
+  var fin=m+"-31", ini=m+"-01";
+  if(s.activeFrom>fin) return false;
+  if(s.activeUntil && s.activeUntil<ini) return false;
+  return true;
+}
+function suscripcionesEnMes(m){
+  return D.subscriptions.filter(function(s){return subEnMes(s,m||monthOf(today()));});
+}
+function totalSuscripcionesMes(m){
+  return sumUSD(suscripcionesEnMes(m));
+}
+// lo que aun no se ha cobrado este mes de las suscripciones activas (evita duplicar
+// cuando el cargo real ya se registro como gasto categoria Suscripciones)
+function pendienteSuscripciones(m){
+  m=m||monthOf(today());
+  var esperado=totalSuscripcionesMes(m);
+  var real=gastoMesCat("Suscripciones",m);
+  return Math.max(0, esperado-real);
+}
 function gastoMesCat(cat,m){
   return D.expenses.filter(function(e){
     return e.category===cat && monthOf(e.date)===(m||monthOf(today()));
@@ -1348,7 +1416,8 @@ function rPresupuesto(){
   var conTope=Object.keys(CATS).filter(function(k){return b[k]>0;});
   var totB=presupuestoTotal();
   var totG=conTope.reduce(function(s,k){return s+gastoMesCat(k,m);},0);
-  var libre=totB-totG;
+  var subsPend=pendienteSuscripciones(m);
+  var libre=totB-totG-subsPend;
 
   el("s-presupuesto").innerHTML=
     '<div class="hero" style="background:linear-gradient(160deg,'+(libre>=0?T.heroPos:T.heroNeg)
@@ -1356,6 +1425,9 @@ function rPresupuesto(){
      +'<div class="hero-l">Te queda este mes</div>'
      +'<div class="hero-v num '+(libre>=0?"g":"r")+'">'+money(libre)+'</div>'
      +'<div class="hero-s">'+money(totG)+' de '+money(totB)+' · '+monthLabel(m)+'</div></div>'
+    +(subsPend>0.01?'<div class="note" style="padding-top:10px">Ya se restaron '+money(subsPend)
+      +' en suscripciones activas que aún no se cobran este mes '
+      +'(<span onclick="go(\'subs\')" style="color:var(--acc);text-decoration:underline">ver</span>).</div>':"")
 
     +'<div class="sec">Semanal general</div>'
     +weekBox()
@@ -1903,7 +1975,7 @@ function rMas(){
     +mi("📆",T.blu,"Balance semanal","","go('semanal')")
     +mi("🎯",T.lima,"Presupuesto",money(presupuestoTotal()),"go('presupuesto')")
     +mi("🔁",T.ylw,"Suscripciones",
-        money(subsAgrupadas().reduce(function(a,o){return a+o.prom;},0))+"/mes","go('subs')")
+        money(totalSuscripcionesMes())+"/mes","go('subs')")
     +'</div>'
     +'<div class="sec">Datos</div>'
     +'<div class="menu">'
