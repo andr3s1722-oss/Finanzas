@@ -349,6 +349,7 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
     <div class="screen" id="s-mas"></div>
     <div class="screen" id="s-cobrar"></div>
     <div class="screen" id="s-pagar"></div>
+    <div class="screen" id="s-cash"></div>
     <div class="screen" id="s-horas"></div>
     <div class="screen" id="s-colombia"></div>
     <div class="screen" id="s-alertas"></div>
@@ -1622,8 +1623,8 @@ function areaChart(vals,color){
 var TITLES={colombia:"Plan Colombia",alertas:"Alertas",resumen:"Resumen",movs:"Movimientos",tarjetas:"Tarjetas",portafolio:"Portafolio",
   mas:"Más",cobrar:"Por cobrar",pagar:"Por pagar",horas:"Horas café",ajustes:"Ajustes",
   precios:"Precios",presupuesto:"Presupuesto",subs:"Suscripciones",tarjeta:"Tarjeta",
-  trabajo:"Trabajo",semanal:"Balance semanal",saava:"Saava",usports:"USPORTS",solana:"Bot Solana"};
-var SUBS={colombia:1,alertas:1,cobrar:1,pagar:1,horas:1,ajustes:1,precios:1,presupuesto:1,subs:1,tarjeta:1,trabajo:1,semanal:1,saava:1,usports:1,solana:1};
+  trabajo:"Trabajo",semanal:"Balance semanal",saava:"Saava",usports:"USPORTS",cash:"Cash",solana:"Bot Solana"};
+var SUBS={colombia:1,alertas:1,cobrar:1,pagar:1,cash:1,horas:1,ajustes:1,precios:1,presupuesto:1,subs:1,tarjeta:1,trabajo:1,semanal:1,saava:1,usports:1,solana:1};
 function go(s){
   screen=s;
   document.querySelectorAll(".screen").forEach(function(x){x.classList.remove("on");});
@@ -1640,7 +1641,7 @@ function go(s){
 }
 function render(s){
   ({colombia:rColombia,alertas:rAlertas,resumen:rResumen,movs:rMovs,tarjetas:rCards,portafolio:rPort,mas:rMas,
-    cobrar:rCobrar,pagar:rPagar,horas:rHoras,ajustes:rAjustes,precios:rPrecios,
+    cobrar:rCobrar,pagar:rPagar,cash:rCash,horas:rHoras,ajustes:rAjustes,precios:rPrecios,
     presupuesto:rPresupuesto,subs:rSubs,tarjeta:rTarjeta,trabajo:rTrabajo,semanal:rSemanal,saava:rSaava,
     usports:rUsports,solana:rSolana})[s]();
 }
@@ -1944,7 +1945,7 @@ function rPort(){
 
    +'<div class="sec">Otros activos<button onclick="editAsset()">+ Agregar</button></div>'
    +'<div class="card" style="padding:6px 14px">'
-   +(D.assets.length?'<div class="list">'+D.assets.map(function(a){
+   +(D.assets.filter(function(a){return a.type!=="Liquidez";}).length?'<div class="list">'+D.assets.filter(function(a){return a.type!=="Liquidez";}).map(function(a){
       return '<div class="row" onclick="editAsset(\''+a.id+'\')">'
        +'<div class="ico" style="background:#7A80701f">'+(a.type==="Vehículo"?"🚙":a.type==="Liquidez"?"🏦":"📦")+'</div>'
        +'<div class="row-m"><div class="row-t">'+esc(a.name)+'</div><div class="row-s">'+esc(a.type)+'</div></div>'
@@ -1977,6 +1978,7 @@ function rMas(){
   var usportsMes=saldoNegocio("USPORTS",monthOf(today()));
   el("s-mas").innerHTML=planningLinks()+
     '<div class="menu">'
+    +mi("💵",T.cyn,"Cash",money(sumUSD(D.assets.filter(function(a){return a.type==="Liquidez";}),function(a){return a.value;})),"go('cash')")
     +mi("🤝",T.grn,"Por cobrar",money(tot.cob),"go('cobrar')")
     +mi("📄",T.red,"Por pagar",money(tot.pag),"go('pagar')")
     +mi("⏱",T.org,"Trabajo",h+"h","go('trabajo')")

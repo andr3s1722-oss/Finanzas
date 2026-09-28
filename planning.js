@@ -14,6 +14,14 @@ function areaOverview(){
  }).join('')+'</div><div class="note" style="margin-top:10px">Balance del mes en USD. Personal incluye horas × tarifa, propinas y otros ingresos. Las posiciones de inversión y el carro se valoran en Patrimonio. Toca un área para ver sus movimientos de todas las fechas.</div>';
 }
 function alertCards(){var items=Finance.alerts(D,today());return items.length?items.map(function(a){return '<button class="card finance-alert" onclick="go(\''+a.target+'\')"><strong>'+esc(a.title)+' ↗</strong><span>'+esc(a.text)+'</span></button>';}).join(''):'<div class="card"><strong>Sin alertas con los datos registrados</strong><p class="note">Se revisan presupuesto personal, cupo, fechas de pago, flujo del mes y plan Colombia.</p></div>';}
+function rCash(){
+ var cuentas=D.assets.filter(function(a){return a.type==='Liquidez';});
+ var total=sumUSD(cuentas,function(a){return a.value;});
+ el('s-cash').innerHTML='<div class="cash-hero"><div><div class="eyebrow">Dinero disponible</div><h1>'+money(total)+'</h1><p>≈ $'+Math.round(total*fx()).toLocaleString('es-CO')+' COP con la TRM actual</p></div><div class="cash-mark">$</div></div>'
+  +'<div class="sec">Tus cuentas<button onclick="editAsset()">+ Agregar</button></div>'
+  +'<div class="cash-grid">'+(cuentas.length?cuentas.map(function(a){var usd=toUSD(a.value,a.currency);return '<button class="cash-account" onclick="editAsset(\''+a.id+'\')"><div class="cash-bank"><span class="cash-icon">'+(/nu/i.test(a.name)?'NU':'$')+'</span><span>Editar ↗</span></div><strong>'+fmt(a.value,a.currency)+'</strong><h2>'+esc(a.name.replace(/ · Cuenta bancaria| · Ahorro/g,''))+'</h2><p>'+(a.currency==='COP'?money(usd)+' USD':'$'+Math.round(a.value*fx()).toLocaleString('es-CO')+' COP')+'</p></button>';}).join(''):'<div class="card"><strong>Aún no tienes cuentas</strong><p class="note">Agrega una cuenta para ver tu dinero disponible aquí.</p></div>')+'</div>'
+  +'<div class="note">Toca cualquier cuenta para cambiar el saldo. Cash forma parte de tu patrimonio y de la liquidez del Plan Colombia.</div>';
+}
 function rAlertas(){el('s-alertas').innerHTML='<div class="dash-intro"><div class="eyebrow">Control financiero</div><h1>Lo que merece atención</h1><p>Se actualiza al registrar movimientos. Avisos dentro de la app.</p></div>'+alertCards()+'<div class="note">Para avisos de deudas usa una fecha AAAA-MM-DD en “Cuándo”. Los vencimientos escritos como “fin de mes” se conservan, pero no generan un aviso por fecha.</div>';}
 function rSemanal(){
  var keys={}; keys[weekStart()]=true;
