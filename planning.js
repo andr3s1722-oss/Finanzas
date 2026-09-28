@@ -31,6 +31,7 @@ function rColombia(){
  var p=D.settings.colombia||{},r=Finance.projection(D),configured=!!D.settings.colombia;
  var car=D.assets.filter(function(a){return /jetta/i.test(a.name||'');});
  el('s-colombia').innerHTML='<div class="dash-intro"><div class="eyebrow">Tu próxima etapa</div><h1>Colombia, con un plan.</h1><p>Sin propinas, salario del café ni ingresos futuros de Saava salvo que tú los agregues.</p></div>'
+ +'<div class="card"><div class="metric"><small>Presupuesto semanal</small><strong>$'+Math.round(D.settings.weeklyBudgetCOP||Finance.weeklyBudget(D)*fx()).toLocaleString('es-CO')+' COP</strong></div><p class="note">Equivale a '+money(Finance.weeklyBudget(D))+' USD por semana y aproximadamente $'+Math.round((D.settings.weeklyBudgetCOP||Finance.weeklyBudget(D)*fx())*52/12).toLocaleString('es-CO')+' COP al mes.</p></div>'
  +'<div class="warn">'+(configured?'Proyección con tus supuestos, sin rentabilidad ni crecimiento automático.':'Completa tus supuestos: los campos vacíos no son una predicción.')+' Todos los importes se introducen en USD; la equivalencia COP usa tu tasa manual de '+fx()+'.</div>'
  +'<div class="card"><div class="f2">'+fText('co-start','Mes de regreso',p.start||shiftMonth(monthOf(today()),1),'','month')+colombiaField('movingCost','Mudanza · pago único USD',p.movingCost)+'</div><div class="f2">'
  +colombiaField('saavaRevenue','Saava · ingreso mensual posible USD',p.saavaRevenue)+colombiaField('saavaCosts','Saava · costos mensuales USD',p.saavaCosts)+'</div><div class="f2">'

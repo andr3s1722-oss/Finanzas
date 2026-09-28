@@ -358,6 +358,7 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
     <div class="screen" id="s-trabajo"></div>
     <div class="screen" id="s-semanal"></div>
     <div class="screen" id="s-saava"></div>
+    <div class="screen" id="s-usports"></div>
     <div class="screen" id="s-solana"></div>
     <div class="screen" id="s-tarjeta"></div>
     <div class="screen" id="s-ajustes"></div>
@@ -452,7 +453,8 @@ var CATS={
   "Salud":{e:"💊",c:"#0F7A46",s:"Salud"},         "Vivienda":{e:"🏠",c:"#B5326E",s:"Vivienda"},
   "Otros":{e:"📦",c:"#7A8070",s:"Otros"},
   // inversión para comprar el negocio: va en verde lima para que resalte en la dona
-  "Ninas":{e:"🍬",c:"#4A7000",s:"Ninas"}, "Saava":{e:"💼",c:"#4338CA",s:"Saava"}, "Sequo":{e:"📦",c:"#B84A1E",s:"Sequo"}
+  "Ninas":{e:"🍬",c:"#4A7000",s:"Ninas"}, "Saava":{e:"💼",c:"#4338CA",s:"Saava"},
+  "USPORTS":{e:"🏟️",c:"#0B6E7D",s:"USPORTS"}, "Sequo":{e:"📦",c:"#B84A1E",s:"Sequo"}
 };
 var PAL=["#4A7000","#2563C4","#B5326E","#0F7A46","#C06A00","#6D3FBF","#0B6E7D","#8A6A00"];
 var MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -674,7 +676,7 @@ function repartidosActivos(){
     return e.spread>1 && Finance.area(e)==="Personal" && weekPortion(e,ws)>0;});
 }
 function weekBox(extra,id){
-  var b=D.settings.weekly||0;
+  var b=Finance.weeklyBudget(D);
   if(!b) return "";
   return '<div class="wkb" id="'+(id||"wkb")+'">'+weekInner(weekSpent(),b,extra||0)+'</div>';
 }
@@ -686,14 +688,15 @@ function weekInner(gastado,b,extra){
     +'<span class="q num" style="color:'+col+'">'
     +(q>=0? money(q)+" libres" : "te pasaste "+money(-q))+'</span></div>'
     +'<div class="track"><div class="fill" style="width:'+pct+'%;background:'+col+'"></div></div>'
-    +'<div class="wkb-f"><span class="num">'+money(tot)+' de '+money(b)+'</span>'
+    +'<div class="wkb-f"><span class="num">'+money(tot)+' de '+(D.settings.weeklyBudgetCOP
+      ?'$'+Math.round(D.settings.weeklyBudgetCOP).toLocaleString('es-CO')+' COP ('+money(b)+')':money(b))+'</span>'
     +'<span>'+(extra? "incluye este gasto"
       : (q>0? money(q/dias)+"/día · "+dias+(dias===1?" día":" días") : dias+(dias===1?" día":" días")))
     +'</span></div>';
 }
 function updWeek(){
   var box=el("wkb-live"); if(!box) return;
-  var b=D.settings.weekly||0; if(!b) return;
+  var b=Finance.weeklyBudget(D); if(!b) return;
   var v=parseMonto((el("f-amount")||{}).value);
   var area=Finance.area({area:el("f-area")?val("f-area"):"",category:_cat});
   var dt=el("f-date")?val("f-date"):today();
@@ -853,73 +856,76 @@ function borrarCash(id){
   save(); closeSheet(); refresh(); toast("Eliminado");
 }
 
-/* ═══════════════ SAAVA ═══════════════ */
-function saavaIngresos(m){
+/* ═══════════════ NEGOCIOS ═══════════════ */
+function negocioIngresos(nombre,m){
   return D.income.filter(function(i){
-    return Finance.area(i)==="Saava" && (m?monthOf(i.date)===m:true);});
+    return Finance.area(i)===nombre && (m?monthOf(i.date)===m:true);});
 }
-function saavaGastos(m){
+function negocioGastos(nombre,m){
   return D.expenses.filter(function(e){
-    return Finance.area(e)==="Saava" && (m?monthOf(e.date)===m:true);});
+    return Finance.area(e)===nombre && (m?monthOf(e.date)===m:true);});
 }
-function saldoSaava(m){
-  return sumUSD(saavaIngresos(m))-sumUSD(saavaGastos(m));
+function saldoNegocio(nombre,m){
+  return sumUSD(negocioIngresos(nombre,m))-sumUSD(negocioGastos(nombre,m));
 }
-function rSaava(){
+function saavaIngresos(m){return negocioIngresos('Saava',m);}
+function saavaGastos(m){return negocioGastos('Saava',m);}
+function saldoSaava(m){return saldoNegocio('Saava',m);}
+function rNegocio(nombre,id,color,icono){
   var m=monthOf(today());
-  var ing=saavaIngresos(m), gas=saavaGastos(m);
+  var ing=negocioIngresos(nombre,m), gas=negocioGastos(nombre,m);
   var totIng=sumUSD(ing), totGas=sumUSD(gas), neto=totIng-totGas;
-  var totalHist=saldoSaava();
-
-  var movs=ing.map(function(i){return {k:"i",o:i};})
-    .concat(gas.map(function(e){return {k:"e",o:e};}))
+  var totalHist=saldoNegocio(nombre);
+  var movs=ing.map(function(i){return {k:'i',o:i};})
+    .concat(gas.map(function(e){return {k:'e',o:e};}))
     .sort(function(a,b){return b.o.date.localeCompare(a.o.date);});
+  var porSem=semanas().map(function(w){
+    var x=Finance.weekly(D,w.ini,nombre);
+    return {ini:w.ini,inc:x.received,exp:x.spent};
+  }).filter(function(w){return w.inc>0||w.exp>0;});
 
-  var porSem=semanas().filter(function(w){return w.saavaInc>0||w.saavaExp>0;});
-
-  el("s-saava").innerHTML=
+  el('s-'+id).innerHTML=
     '<div class="hero" style="background:linear-gradient(160deg,'
      +(neto>=0?T.heroPos:T.heroNeg)+' 0%,var(--card) 58%);border-color:'
      +(neto>=0?T.bordePos:T.bordeNeg)+'">'
-     +'<div class="hero-l">Saava · balance de '+monthLabel(m)+'</div>'
-     +'<div class="hero-v num '+(neto>=0?"g":"r")+'">'+(neto>=0?"+":"")+money(neto)+'</div>'
-     +'<div class="hero-s">Desde que empezaste: '+(totalHist>=0?"+":"")+money(totalHist)+'</div>'
+     +'<div class="hero-l">'+icono+' '+nombre+' · balance de '+monthLabel(m)+'</div>'
+     +'<div class="hero-v num '+(neto>=0?'g':'r')+'">'+(neto>=0?'+':'')+money(neto)+'</div>'
+     +'<div class="hero-s">Desde que empezaste: '+(totalHist>=0?'+':'')+money(totalHist)+'</div>'
      +'<div class="hero-row">'
       +'<div class="hero-chip"><div class="l">Ingresó</div><div class="v num g">'+kmoney(totIng)+'</div></div>'
       +'<div class="hero-chip"><div class="l">Gastó</div><div class="v num r">'+kmoney(totGas)+'</div></div>'
      +'</div></div>'
-
     +'<div class="f2" style="margin-top:16px">'
-     +'<button class="btn" style="background:'+T.ind+';color:'+T.indTx+'" onclick="agregarSaava(\'ingreso\')">+ Ingreso</button>'
-     +'<button class="btn gh" style="color:var(--tx)" onclick="agregarSaava(\'gasto\')">+ Gasto</button>'
+     +'<button class="btn" style="background:'+color+';color:'+T.indTx+'" onclick="agregarNegocio(\''+nombre+'\',\'ingreso\')">+ Ingreso</button>'
+     +'<button class="btn gh" style="color:var(--tx)" onclick="agregarNegocio(\''+nombre+'\',\'gasto\')">+ Gasto</button>'
     +'</div>'
-
-    +(porSem.length? '<div class="sec">Por semana</div>'
-      +porSem.map(function(w){
-        var n=w.saavaInc-w.saavaExp;
-        return '<div class="card" style="margin-bottom:8px;padding:13px 15px">'
-         +'<div style="display:flex;justify-content:space-between;align-items:baseline">'
-          +'<span style="font-size:13px;font-weight:600">'+etiquetaSemana(w.ini)+'</span>'
-          +'<span class="num" style="font-weight:700;color:'+(n>=0?"var(--grn)":"var(--red)")+'">'
-          +(n>=0?"+":"")+money(n)+'</span></div>'
-         +'<div style="font-size:11px;color:var(--tx3);margin-top:2px">'
-          +'+'+money(w.saavaInc)+' &minus; '+money(w.saavaExp)+'</div></div>';
-      }).join("") : "")
-
+    +(porSem.length?'<div class="sec">Por semana</div>'+porSem.map(function(w){
+      var n=w.inc-w.exp;
+      return '<div class="card" style="margin-bottom:8px;padding:13px 15px">'
+       +'<div style="display:flex;justify-content:space-between;align-items:baseline">'
+        +'<span style="font-size:13px;font-weight:600">'+etiquetaSemana(w.ini)+'</span>'
+        +'<span class="num" style="font-weight:700;color:'+(n>=0?'var(--grn)':'var(--red)')+'">'
+        +(n>=0?'+':'')+money(n)+'</span></div>'
+       +'<div style="font-size:11px;color:var(--tx3);margin-top:2px">+'
+        +money(w.inc)+' &minus; '+money(w.exp)+'</div></div>';
+    }).join(''):'')
     +'<div class="sec">Movimientos de '+monthLabel(m)+'</div>'
     +'<div class="card" style="padding:6px 14px">'+movRows(movs)+'</div>'
-    +'<div class="note">Lo de Saava no cuenta como gasto personal en Resumen, Presupuesto '
-    +'ni Balance semanal — también aparece al filtrar Saava y en el flujo total de cada semana.</div>';
+    +'<div class="note">Los movimientos de '+nombre+' quedan separados del presupuesto personal y conservan su propio balance semanal.</div>';
 }
-function agregarSaava(kind){
-  if(kind==="ingreso"){
-    openAdd("ingreso");
-    setVenture("Saava");
+function rSaava(){rNegocio('Saava','saava',T.ind,'💼');}
+function rUsports(){rNegocio('USPORTS','usports',T.cyn,'🏟️');}
+function agregarNegocio(nombre,kind){
+  if(kind==='ingreso'){
+    openAdd('ingreso');
+    setVenture(nombre);
   } else {
-    openAdd("gasto");
-    marcarCat("Saava"); _catManual=true;
+    openAdd('gasto');
+    marcarCat(nombre); _catManual=true;
+    var a=el('f-area');if(a)a.value=nombre;
   }
 }
+function agregarSaava(kind){agregarNegocio('Saava',kind);}
 
 /* ═══════════════ BOT SOLANA ═══════════════ */
 // se registra el SALDO de la cuenta cada vez que lo revisas (no un delta a mano);
@@ -1148,7 +1154,7 @@ function cancelarSub(id){
 /* ═══════════════ TRABAJO ═══════════════ */
 function tarifa(){return D.settings.rate||0;}
 // Ninas y Saava son inversion / costo de negocio: no cuentan como gasto personal
-function esInversion(cat){return cat==="Ninas"||cat==="Saava"||cat==="Sequo";}
+function esInversion(cat){return cat==="Ninas"||cat==="Saava"||cat==="USPORTS"||cat==="Sequo";}
 function esPropina(src){return /tip|propina/i.test(src||"");}
 function propinasDia(ds){
   return D.income.filter(function(i){return i.date===ds && esPropina(i.source);})
@@ -1345,7 +1351,7 @@ function aplicarTema(t,rerender){
   document.documentElement.setAttribute("data-theme",ef);
   CATS["Transporte"].c=T.blu; CATS["Ocio"].c=T.pur;
   CATS["Servicios"].c=T.cyn;    CATS["Suscripciones"].c=T.ylw; CATS["Salud"].c=T.grn;
-  CATS["Vivienda"].c=T.pnk;     CATS["Otros"].c=T.gris;        CATS["Ninas"].c=T.lima; CATS["Saava"].c=T.ind; CATS["Sequo"].c=T.seq;
+  CATS["Vivienda"].c=T.pnk;     CATS["Otros"].c=T.gris;        CATS["Ninas"].c=T.lima; CATS["Saava"].c=T.ind; CATS["USPORTS"].c=T.cyn; CATS["Sequo"].c=T.seq;
   CATS["Mercado"].c=T.org;      CATS["Restaurante"].c=T.rosa;
   PAL=[T.lima,T.blu,T.pnk,T.grn,T.org,T.pur,T.cyn,T.ylw];
   if(rerender){ save(); refresh(); }
@@ -1616,8 +1622,8 @@ function areaChart(vals,color){
 var TITLES={colombia:"Plan Colombia",alertas:"Alertas",resumen:"Resumen",movs:"Movimientos",tarjetas:"Tarjetas",portafolio:"Portafolio",
   mas:"Más",cobrar:"Por cobrar",pagar:"Por pagar",horas:"Horas café",ajustes:"Ajustes",
   precios:"Precios",presupuesto:"Presupuesto",subs:"Suscripciones",tarjeta:"Tarjeta",
-  trabajo:"Trabajo",semanal:"Balance semanal",saava:"Saava",solana:"Bot Solana"};
-var SUBS={colombia:1,alertas:1,cobrar:1,pagar:1,horas:1,ajustes:1,precios:1,presupuesto:1,subs:1,tarjeta:1,trabajo:1,semanal:1,saava:1,solana:1};
+  trabajo:"Trabajo",semanal:"Balance semanal",saava:"Saava",usports:"USPORTS",solana:"Bot Solana"};
+var SUBS={colombia:1,alertas:1,cobrar:1,pagar:1,horas:1,ajustes:1,precios:1,presupuesto:1,subs:1,tarjeta:1,trabajo:1,semanal:1,saava:1,usports:1,solana:1};
 function go(s){
   screen=s;
   document.querySelectorAll(".screen").forEach(function(x){x.classList.remove("on");});
@@ -1636,7 +1642,7 @@ function render(s){
   ({colombia:rColombia,alertas:rAlertas,resumen:rResumen,movs:rMovs,tarjetas:rCards,portafolio:rPort,mas:rMas,
     cobrar:rCobrar,pagar:rPagar,horas:rHoras,ajustes:rAjustes,precios:rPrecios,
     presupuesto:rPresupuesto,subs:rSubs,tarjeta:rTarjeta,trabajo:rTrabajo,semanal:rSemanal,saava:rSaava,
-    solana:rSolana})[s]();
+    usports:rUsports,solana:rSolana})[s]();
 }
 function refresh(){render(screen);}
 
@@ -1711,12 +1717,16 @@ function rResumen(){
 
    +(function(){
        var saavaMes=saldoSaava(curMonth);
+       var usportsMes=saldoNegocio("USPORTS",curMonth);
        var solUlt=solanaUltimo(), solSaldo=solUlt?toUSD(solUlt.balance,solUlt.currency):null;
        var solCambio=solanaCambioMes(curMonth);
        return '<div class="sec">Negocios</div>'
         +'<div class="grid2" style="margin-bottom:16px">'
          +'<div class="tile" onclick="go(\'saava\')"><div class="l">💼 Saava</div>'
          +'<div class="v num '+(saavaMes>=0?"g":"r")+'">'+(saavaMes>=0?"+":"")+money(saavaMes)+'</div>'
+         +'<div class="s">'+monthLabel(curMonth)+'</div></div>'
+         +'<div class="tile" onclick="go(\'usports\')"><div class="l">🏟️ USPORTS</div>'
+         +'<div class="v num '+(usportsMes>=0?"g":"r")+'">'+(usportsMes>=0?"+":"")+money(usportsMes)+'</div>'
          +'<div class="s">'+monthLabel(curMonth)+'</div></div>'
          +'<div class="tile" onclick="go(\'solana\')"><div class="l">🪙 Bot Solana</div>'
          +'<div class="v num">'+(solSaldo==null?"—":money(solSaldo))+'</div>'
@@ -1726,8 +1736,9 @@ function rResumen(){
    +(function(){
        var per=sumUSD(Finance.incomes(D).filter(function(i){return Finance.area(i)==="Personal" && monthOf(i.date)===curMonth;}));
        var sav=sumUSD(saavaIngresos(curMonth));
+       var usp=sumUSD(negocioIngresos("USPORTS",curMonth));
        var sol=solanaCambioMes(curMonth);
-       var mx=Math.max(Math.abs(per),Math.abs(sav),Math.abs(sol),1);
+       var mx=Math.max(Math.abs(per),Math.abs(sav),Math.abs(usp),Math.abs(sol),1);
        function fila(nombre,val){
          var col=val>=0?"var(--grn)":"var(--red)";
          return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
@@ -1738,7 +1749,7 @@ function rResumen(){
           +(val>=0?"+":"")+money(val)+'</span></div>';
        }
        return '<div class="sec">Fuentes de ingreso · '+monthLabel(curMonth)+'</div>'
-        +'<div class="card">'+fila("Personal",per)+fila("Saava",sav)+fila("Bot Solana",sol)+'</div>';
+        +'<div class="card">'+fila("Personal",per)+fila("Saava",sav)+fila("USPORTS",usp)+fila("Bot Solana",sol)+'</div>';
      })()
    +'<div class="sec">Ingresos vs gastos<button onclick="go(\'movs\')">Ver todo</button></div>'
    +'<div class="card"><div class="bars">'+bars+'</div>'
@@ -1963,12 +1974,14 @@ function preciosResumen(){
 function rMas(){
   var tot=totals(), h=D.cafe_hours.reduce(function(s,x){return s+x.hours;},0);
   var saavaMes=saldoSaava(monthOf(today()));
+  var usportsMes=saldoNegocio("USPORTS",monthOf(today()));
   el("s-mas").innerHTML=planningLinks()+
     '<div class="menu">'
     +mi("🤝",T.grn,"Por cobrar",money(tot.cob),"go('cobrar')")
     +mi("📄",T.red,"Por pagar",money(tot.pag),"go('pagar')")
     +mi("⏱",T.org,"Trabajo",h+"h","go('trabajo')")
     +mi("💼",T.ind,"Saava",(saavaMes>=0?"+":"")+money(saavaMes),"go('saava')")
+    +mi("🏟️",T.cyn,"USPORTS",(usportsMes>=0?"+":"")+money(usportsMes),"go('usports')")
     +mi("🪙",T.cyn,"Bot Solana",(function(){var u=solanaUltimo();return u?money(toUSD(u.balance,u.currency)):"—";})(),"go('solana')")
     +mi("📈",T.blu,"Precios",D.prices.length+"","go('precios')")
     +'</div><div class="sec">Control</div><div class="menu">'
@@ -2068,8 +2081,9 @@ function rAjustes(){
    +'<div class="note" style="padding-top:0">Automático sigue lo que tenga el celular.</div>'
    +'<div class="f"><label>Tasa de cambio USD → COP</label>'
     +'<input id="set-fx" value="'+fx()+'" inputmode="decimal"></div>'
-   +'<div class="f"><label>Presupuesto semanal (USD)</label>'
-    +'<input id="set-week" value="'+(D.settings.weekly||0)+'" inputmode="decimal"></div>'
+   +'<div class="f"><label>Presupuesto semanal (COP)</label>'
+    +'<input id="set-week-cop" value="'+Math.round(D.settings.weeklyBudgetCOP||Finance.weeklyBudget(D)*fx())+'" inputmode="numeric"></div>'
+   +'<div class="note" style="padding-top:0">Equivale a '+money(Finance.weeklyBudget(D))+' USD con la TRM actual.</div>'
    +'<div class="f"><label>Tarifa por hora (café)</label>'
     +'<input id="set-rate" value="'+(D.settings.rate||0)+'" inputmode="decimal"></div>'
    +'<button class="btn" style="width:100%;margin-top:4px" onclick="saveSettings()">Guardar ajustes</button>'
@@ -2099,10 +2113,10 @@ function rAjustes(){
 }
 function saveSettings(){
   var f=parseMonto(el("set-fx").value), r=parseMonto(el("set-rate").value),
-      w=parseMonto(el("set-week").value);
+      w=parseMonto(el("set-week-cop").value);
   if(f>0) D.settings.fx=f;
   if(r>=0) D.settings.rate=r;
-  if(w>=0) D.settings.weekly=w;
+  if(w>=0){D.settings.weeklyBudgetCOP=w;D.settings.weekly=Math.round(w/D.settings.fx*100)/100;}
   save(); toast("Ajustes guardados ✓"); go("mas");
 }
 function wipe(){
@@ -2349,6 +2363,7 @@ function ventureToggle(sel){
   return '<div class="f"><label>¿De d\u00f3nde?</label><div class="seg mini">'
     +'<button class="'+(sel===""?"on":"")+'" onclick="setVenture(\'\')">Personal</button>'
     +'<button class="'+(sel==="Saava"?"on":"")+'" onclick="setVenture(\'Saava\')">Saava</button>'
+    +'<button class="'+(sel==="USPORTS"?"on":"")+'" onclick="setVenture(\'USPORTS\')">USPORTS</button>'
     +'</div></div>';
 }
 function setVenture(v){
@@ -2357,7 +2372,7 @@ function setVenture(v){
   var segs=document.querySelectorAll("#sh-b .seg.mini");
   var target=segs[segs.length-1];
   if(target) Array.prototype.forEach.call(target.querySelectorAll("button"),function(b,ix){
-    b.classList.toggle("on", (ix===0&&v==="")||(ix===1&&v==="Saava"));
+    b.classList.toggle("on", (ix===0&&v==="")||(ix===1&&v==="Saava")||(ix===2&&v==="USPORTS"));
   });
 }
 function addInv(){

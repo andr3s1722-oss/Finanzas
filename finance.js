@@ -1,13 +1,18 @@
 /* Pure calculations. Amounts returned in USD; dates are local calendar dates. */
 (function(root){
 'use strict';
-const areas=['Personal','Saava','Inversiones','Carro','Viajes','Extraordinarios'];
+const areas=['Personal','Saava','USPORTS','Inversiones','Carro','Viajes','Extraordinarios'];
 function area(o){
  if(areas.includes(o.area)) return o.area;
  if(o.venture==='Saava'||o.category==='Saava') return 'Saava';
+ if(o.venture==='USPORTS'||o.category==='USPORTS') return 'USPORTS';
  if(['Ninas','Sequo','Inversiones'].includes(o.category)) return 'Inversiones';
  if(['Carro','Viajes','Extraordinarios'].includes(o.category)) return o.category;
  return 'Personal';
+}
+function weeklyBudget(d){
+ const cop=Number(d.settings.weeklyBudgetCOP||0),rate=Number(d.settings.fx)||4100;
+ return cop>0?cop/rate:Number(d.settings.weekly||0);
 }
 function usd(d,o,key='amount'){return Number(o[key]||0)/(o.currency==='COP'?Number(d.settings.fx)||4100:1);}
 function date(s){return new Date(s+'T12:00:00');}
@@ -36,7 +41,7 @@ function projection(d){
 }
 function alerts(d,today){
  const out=[], w=weekly(d,monday(today),'Personal');
- const budget=Number(d.settings.weekly||0);
+ const budget=weeklyBudget(d);
  // Budget allocation respects spread, while weekly cash flow uses actual payment date.
  let allocated=0;
  d.expenses.filter(o=>area(o)==='Personal').forEach(o=>{
@@ -51,6 +56,6 @@ function alerts(d,today){
  if(d.settings.colombia){let p=projection(d);if(p.net<0||p.initial<0)out.push({title:'Revisa tu plan Colombia',text:p.initial<0?'El efectivo inicial no cubre las reservas y la mudanza.':'El escenario pierde '+(-p.net).toFixed(2)+' USD al mes.',target:'colombia'});}
  return out;
 }
-const api={incomes,areas,area,usd,iso,plus,monday,isTip,weekly,projection,alerts};
+const api={incomes,areas,area,usd,iso,plus,monday,isTip,weekly,weeklyBudget,projection,alerts};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.Finance=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
