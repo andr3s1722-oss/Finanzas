@@ -6,6 +6,13 @@ function areaChips(value,action){return '<div class="chips">'+['Todos'].concat(F
 function filterArea(a){areaFilter=a;go('movs');}
 function filterWeek(a){weekFilter=a;rSemanal();}
 function planningLinks(){return '<div class="dash-actions"><button onclick="go(\'semanal\')">Mi semana ↗</button><button onclick="go(\'colombia\')">Plan Colombia ↗</button><button onclick="go(\'alertas\')">Alertas · '+Finance.alerts(D,today()).length+'</button></div>';}
+function cashOverview(){
+ var cuentas=D.assets.filter(function(a){return a.type==='Liquidez';});
+ if(!cuentas.length)return '<div class="sec">Cuentas bancarias / Cash<button onclick="go(\'cash\')">Agregar ↗</button></div>';
+ var total=sumUSD(cuentas,function(a){return a.value;});
+ return '<div class="sec">Cuentas bancarias / Cash<button onclick="go(\'cash\')">Ver todas · '+money(total)+' ↗</button></div><div class="cash-overview-grid">'
+  +cuentas.map(function(a){return '<button class="cash-mini" onclick="editAsset(\''+a.id+'\')"><span class="cash-mini-top"><b>'+(/nu/i.test(a.name)?'NU':'$')+'</b><i>Editar ↗</i></span><strong>'+fmt(a.value,a.currency)+'</strong><span>'+esc(a.name.replace(/ · Cuenta bancaria| · Ahorro/g,''))+'</span></button>';}).join('')+'</div>';
+}
 function areaOverview(){
  var md=monthData(curMonth);
  return '<div class="sec">Tus áreas · '+monthLabel(curMonth)+'</div><div class="area-grid">'+Finance.areas.map(function(a){

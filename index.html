@@ -1687,10 +1687,10 @@ function rResumen(){
     +'<div class="hero-row">'
       +'<div class="hero-chip"><div class="l">Portafolio</div><div class="v num b">'+kmoney(tot.inv)+'</div></div>'
       +'<div class="hero-chip"><div class="l">Cobrar</div><div class="v num g">'+kmoney(tot.cob)+'</div></div>'
-      +'<div class="hero-chip"><div class="l">Deudas</div><div class="v num r">'+kmoney(tot.deu+tot.pag)+'</div></div>'
+    +'<div class="hero-chip"><div class="l">Deudas</div><div class="v num r">'+kmoney(tot.deu+tot.pag)+'</div></div>'
     +'</div></div>'
 
-   +areaOverview()+
+   +cashOverview()+areaOverview()+
    '<div class="sec">Atención hoy</div>'+alertCards()+
    '<div class="sec" style="margin-top:24px">Presupuesto'
    +'<button onclick="go(\'semanal\')">Ver semanas &rsaquo;</button></div>'
