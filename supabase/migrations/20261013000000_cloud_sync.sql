@@ -11,6 +11,11 @@ create table if not exists public.user_data (
 
 alter table public.user_data enable row level security;
 
+-- Los proyectos nuevos de Supabase no dan permisos automáticos: la lectura se concede aquí
+-- (las filas que se ven siguen limitadas por la política de abajo).
+grant usage on schema public to authenticated;
+grant select on public.user_data to authenticated;
+
 -- Cada persona solo puede LEER su propia fila. Nadie escribe directo en la tabla:
 -- todas las escrituras pasan por save_user_data(), que valida la versión.
 drop policy if exists user_data_select_own on public.user_data;

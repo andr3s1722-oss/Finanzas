@@ -57,9 +57,12 @@ function create(deps){
   var text=String(r.text||'');
   if(r.status===409||/version_conflict/.test(text))return fail('conflict','Cambios simultáneos');
   if(r.status===404||/PGRST205|PGRST202|42P01|does not exist|Could not find/.test(text))return fail('not-setup','Falta crear la tabla en Supabase');
-  if(r.status===401||r.status===403)return fail('auth','La sesión venció: vuelve a conectarte');
+  if(/42501|permission denied/.test(text))return fail('error','Faltan permisos en la tabla de la nube: ejecuta de nuevo el SQL de la migración (supabase/migrations)');
+  var why=(r.data&&(r.data.message||r.data.msg||r.data.error_description||r.data.hint))||text.slice(0,120);
+  if(/jwt expired|token.*expired|expired/i.test(text))return fail('auth','La sesión venció: vuelve a conectarte');
+  if(r.status===401||r.status===403)return fail('auth','Supabase no aceptó la sesión ('+r.status+(why?': '+why:'')+')');
   if(/data_too_large/.test(text))return fail('error','Los datos son demasiado grandes para la nube');
-  return fail('error','Error '+r.status);
+  return fail('error','Error '+r.status+(why?': '+why:''));
  }
  async function call(url,options){
   var r;try{r=await deps.request(url,options);}catch(e){throw fail('offline','Sin conexión');}

@@ -108,3 +108,15 @@ test('email code sign-in: sends the code, verifies it, stores the session, rejec
  const body=JSON.parse(calls.at(-1)[2]);assert.deepEqual(body,{type:'email',email:'yo@correo.com',token:'123456'});
  const s=await P.getSession();assert.equal(s.access_token,'AT');assert.equal(s.refresh_token,'RT');assert(s.expires_at>Date.now()/1000);assert.equal(s.user,undefined);
 });
+
+test('a permission-denied table is reported as a setup problem, not an expired session',async()=>{
+ const srv=server();
+ srv.request=async()=>({ok:false,status:403,data:{code:'42501',message:'permission denied for table user_data'},text:'{"code":"42501","message":"permission denied for table user_data"}'});
+ let st=await device(srv,'A').c.sync();assert.equal(st.state,'error');assert(st.message.includes('permisos'));
+ srv.request=async()=>({ok:false,status:401,data:{message:'JWT expired'},text:'{"message":"JWT expired"}'});
+ st=await device(srv,'B').c.sync();assert.equal(st.state,'auth');assert(st.message.includes('venció'));
+ srv.request=async()=>({ok:false,status:401,data:{message:'Invalid JWT'},text:'{"message":"Invalid JWT"}'});
+ st=await device(srv,'C').c.sync();assert.equal(st.state,'auth');assert(st.message.includes('401')&&st.message.includes('Invalid JWT'));
+ srv.request=async()=>({ok:false,status:500,data:{message:'boom'},text:'boom'});
+ st=await device(srv,'D').c.sync();assert.equal(st.state,'error');assert(st.message.includes('500: boom'));
+});
