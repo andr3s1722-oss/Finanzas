@@ -6,6 +6,13 @@ function areaChips(value,action){return '<div class="chips">'+['Todos'].concat(F
 function filterArea(a){areaFilter=a;go('movs');}
 function filterWeek(a){weekFilter=a;rSemanal();}
 function planningLinks(){return '<div class="dash-actions"><button onclick="go(\'semanal\')">Flujo ↗</button><button onclick="go(\'split\')">Split ↗</button><button onclick="go(\'colombia\')">Plan Colombia ↗</button><button onclick="go(\'alertas\')">Alertas · '+Finance.alerts(D,today()).length+'</button></div>';}
+function cashOverview(){
+ var cuentas=D.assets.filter(function(a){return a.type==='Liquidez';});
+ if(!cuentas.length)return '<div class="sec">Cuentas bancarias / Cash<button onclick="go(\'cash\')">Agregar ↗</button></div>';
+ var total=sumUSD(cuentas,function(a){return a.value;});
+ return '<div class="sec">Cuentas bancarias / Cash<button onclick="go(\'cash\')">Ver todas · '+money(total)+' ↗</button></div><div class="cash-overview-grid">'
+  +cuentas.map(function(a){return '<button class="cash-mini" onclick="editAsset(\''+a.id+'\')"><span class="cash-mini-top"><b>'+(/nu/i.test(a.name)?'NU':'$')+'</b><i>Editar ↗</i></span><strong>'+fmt(a.value,a.currency)+'</strong><span>'+esc(a.name.replace(/ · Cuenta bancaria| · Ahorro/g,''))+'</span></button>';}).join('')+'</div>';
+}
 function areaOverview(){
  var md=monthData(curMonth);
  return '<div class="sec">Tus áreas · '+monthLabel(curMonth)+'</div><div class="area-grid">'+Finance.areas.map(function(a){
@@ -14,12 +21,21 @@ function areaOverview(){
  }).join('')+'</div><div class="note" style="margin-top:10px">Balance del mes en USD. Personal incluye horas × tarifa, propinas y otros ingresos. Las posiciones de inversión y el carro se valoran en Patrimonio. Toca un área para ver sus movimientos de todas las fechas.</div>';
 }
 function alertCards(){var items=Finance.alerts(D,today());return items.length?items.map(function(a){return '<button class="card finance-alert" onclick="go(\''+a.target+'\')"><strong>'+esc(a.title)+' ↗</strong><span>'+esc(a.text)+'</span></button>';}).join(''):'<div class="card"><strong>Sin alertas con los datos registrados</strong><p class="note">Se revisan presupuesto personal, cupo, fechas de pago, flujo del mes y plan Colombia.</p></div>';}
+function rCash(){
+ var cuentas=D.assets.filter(function(a){return a.type==='Liquidez';});
+ var total=sumUSD(cuentas,function(a){return a.value;});
+ el('s-cash').innerHTML='<div class="cash-hero"><div><div class="eyebrow">Dinero disponible</div><h1>'+money(total)+'</h1><p>≈ '+mask('$'+Math.round(total*fx()).toLocaleString('es-CO'))+' COP con la TRM actual</p></div><div class="cash-mark">$</div></div>'
+  +'<div class="sec">Tus cuentas<button onclick="editAsset()">+ Agregar</button></div>'
+  +'<div class="cash-grid">'+(cuentas.length?cuentas.map(function(a){var usd=toUSD(a.value,a.currency);return '<button class="cash-account" onclick="editAsset(\''+a.id+'\')"><div class="cash-bank"><span class="cash-icon">'+(/nu/i.test(a.name)?'NU':'$')+'</span><span>Editar ↗</span></div><strong>'+fmt(a.value,a.currency)+'</strong><h2>'+esc(a.name.replace(/ · Cuenta bancaria| · Ahorro/g,''))+'</h2><p>'+(a.currency==='COP'?money(usd)+' USD':mask('$'+Math.round(a.value*fx()).toLocaleString('es-CO'))+' COP')+'</p></button>';}).join(''):'<div class="card"><strong>Aún no tienes cuentas</strong><p class="note">Agrega una cuenta para ver tu dinero disponible aquí.</p></div>')+'</div>'
+  +'<div class="note">Toca cualquier cuenta para cambiar el saldo. Cash forma parte de tu patrimonio y de la liquidez del Plan Colombia.</div>';
+}
 function rAlertas(){el('s-alertas').innerHTML='<div class="dash-intro"><div class="eyebrow">Control financiero</div><h1>Lo que merece atención</h1><p>Se actualiza al registrar movimientos. Avisos dentro de la app.</p></div>'+alertCards()+'<div class="note">Para avisos de deudas usa una fecha AAAA-MM-DD en “Cuándo”. Los vencimientos escritos como “fin de mes” se conservan, pero no generan un aviso por fecha.</div>';}
 function colombiaField(key,label,value){return fText('co-'+key,label,value==null?'':value,'0','text','inputmode="decimal"');}
 function rColombia(){
  var p=D.settings.colombia||{},r=Finance.projection(D),configured=!!D.settings.colombia;
  var car=D.assets.filter(function(a){return /jetta/i.test(a.name||'');});
  el('s-colombia').innerHTML='<div class="dash-intro"><div class="eyebrow">Tu próxima etapa</div><h1>Colombia, con un plan.</h1><p>Sin propinas, salario del café ni ingresos futuros de Saava salvo que tú los agregues.</p></div>'
+ +'<div class="card"><div class="metric"><small>Presupuesto semanal</small><strong>'+mask('$'+Math.round(D.settings.weeklyBudgetCOP||Finance.weeklyBudget(D)*fx()).toLocaleString('es-CO'))+' COP</strong></div><p class="note">Equivale a '+money(Finance.weeklyBudget(D))+' USD por semana y aproximadamente $'+Math.round((D.settings.weeklyBudgetCOP||Finance.weeklyBudget(D)*fx())*52/12).toLocaleString('es-CO')+' COP al mes.</p></div>'
  +'<div class="warn">'+(configured?'Proyección con tus supuestos, sin rentabilidad ni crecimiento automático.':'Completa tus supuestos: los campos vacíos no son una predicción.')+' Todos los importes se introducen en USD; la equivalencia COP usa tu tasa manual de '+fx()+'.</div>'
  +'<div class="card"><div class="f2">'+fText('co-start','Mes de regreso',p.start||shiftMonth(monthOf(today()),1),'','month')+colombiaField('movingCost','Mudanza · pago único USD',p.movingCost)+'</div><div class="f2">'
  +colombiaField('saavaRevenue','Saava · ingreso mensual posible USD',p.saavaRevenue)+colombiaField('saavaCosts','Saava · costos mensuales USD',p.saavaCosts)+'</div><div class="f2">'
