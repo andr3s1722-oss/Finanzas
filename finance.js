@@ -26,6 +26,43 @@ function weekly(d,start,scope='Todos'){
  const received=inc.reduce((s,o)=>s+usd(d,o),0), spent=exp.reduce((s,o)=>s+usd(d,o),0);
  return {start,end,hours,received,spent,net:received-spent,tips:inc.filter(isTip).reduce((s,o)=>s+usd(d,o),0),salary:hours*Number(d.settings.rate||0),income:inc,expenses:exp};
 }
+
+function lastDay(m){const [y,mo]=m.split('-').map(Number);return iso(new Date(y,mo,0,12));}
+function range(mode,anchor){
+ if(mode==='mes'){const m=anchor.slice(0,7);return {start:m+'-01',end:lastDay(m)};}
+ const start=monday(anchor);return {start,end:plus(start,6)};
+}
+function shift(mode,anchor,n){
+ if(mode==='mes'){const [y,m]=anchor.slice(0,7).split('-').map(Number),x=new Date(y,m-1+n,1,12);return iso(x);}
+ return plus(anchor,7*n);
+}
+function key(s){return String(s||'').toLowerCase().replace(/['’`]/g,'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();}
+function sourceName(o){
+ if(o.generatedSalary)return 'Salario por horas';
+ if(isTip(o))return 'Propinas';
+ if(area(o)==='Saava')return 'Saava';
+ return o.source||'Otros';
+}
+function group(list,name,d,extra){
+ const m={};
+ list.forEach(o=>{const k=key(name(o))||'otros',g=m[k]||(m[k]={name:name(o),value:0,count:0,items:[]});g.value+=usd(d,o);g.count++;g.items.push(o);});
+ return Object.keys(m).map(k=>m[k]).sort((a,b)=>b.value-a.value);
+}
+/* Totals, breakdowns and daily series for an inclusive date range. */
+function span(d,start,end,scope='Todos'){
+ const pick=o=>o.date>=start&&o.date<=end&&(scope==='Todos'||area(o)===scope);
+ const income=incomes(d).filter(pick),expenses=d.expenses.filter(pick);
+ const received=income.reduce((s,o)=>s+usd(d,o),0),spent=expenses.reduce((s,o)=>s+usd(d,o),0);
+ const days=[];
+ for(let t=start;t<=end;t=plus(t,1))days.push({date:t,in:0,out:0});
+ const at={};days.forEach(x=>at[x.date]=x);
+ income.forEach(o=>{if(at[o.date])at[o.date].in+=usd(d,o);});
+ expenses.forEach(o=>{if(at[o.date])at[o.date].out+=usd(d,o);});
+ return {start,end,received,spent,net:received-spent,income,expenses,days,
+  byCategory:group(expenses,o=>o.category||'Otros',d),
+  byMerchant:group(expenses,o=>o.desc||'Sin descripción',d),
+  bySource:group(income,sourceName,d)};
+}
 function projection(d){
  const p=d.settings.colombia||{};
  const net=Number(p.saavaRevenue||0)-Number(p.saavaCosts||0)+Number(p.otherIncome||0)-Number(p.livingCosts||0);
@@ -51,6 +88,6 @@ function alerts(d,today){
  if(d.settings.colombia){let p=projection(d);if(p.net<0||p.initial<0)out.push({title:'Revisa tu plan Colombia',text:p.initial<0?'El efectivo inicial no cubre las reservas y la mudanza.':'El escenario pierde '+(-p.net).toFixed(2)+' USD al mes.',target:'colombia'});}
  return out;
 }
-const api={incomes,areas,area,usd,iso,plus,monday,isTip,weekly,projection,alerts};
+const api={incomes,areas,area,usd,iso,plus,monday,isTip,weekly,projection,alerts,lastDay,range,shift,span,key};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.Finance=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

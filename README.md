@@ -9,6 +9,10 @@ La versión original contenía únicamente `index.html`: estilos, pantallas, cá
 - `index.html`: pantallas originales, formularios, almacenamiento y arranque.
 - `finance.js`: cálculos puros de áreas, semanas, alertas y proyección.
 - `planning.js`: interfaz semanal, áreas, alertas y plan Colombia.
+- `flow.js`: pantalla Flujo (reemplaza el balance semanal): semana o mes, balance, a dónde va el dinero por categoría y comercio, de dónde entra y comparación con el periodo anterior.
+- `split.js` / `splitui.js`: gastos compartidos tipo Splitwise (cálculo puro e interfaz).
+- `importer.js` / `importui.js`: importar movimientos desde mensajes pegados (Nequi, Nu, bancos de EE. UU.) o CSV, con detección de duplicados, deshacer la última importación, exportación CSV y enlace `#add?...` para Atajos.
+- `metas.js`: metas de ahorro (aportes y ritmo semanal necesario).
 - `modern.css`: diseño adaptable, temas claro/oscuro, foco y movimiento reducido.
 - `tests/finance.test.cjs`: pruebas sin dependencias externas.
 
@@ -24,6 +28,11 @@ Se añaden únicamente campos opcionales:
 - `settings.colombia`: `start` (AAAA-MM), `saavaRevenue`, `saavaCosts`, `livingCosts`, `otherIncome`, `movingCost` (USD) y `reserveDebt` (booleano).
 
 Sin `area`, Saava se reconoce por `category` o `venture`; Ninas y Sequo se agrupan como Inversiones conservando la categoría. Transporte se mantiene en Personal: no se supone que todo transporte sea un costo del carro. Las clasificaciones ambiguas se pueden cambiar al editar cada registro. El filtro de movimientos abarca todas las fechas; las tarjetas del resumen muestran el mes seleccionado.
+
+- `people[]` y `splits[]` (nuevos, opcionales): personas y gastos compartidos (`kind:'gasto'` con `payer`, `parts:[{who,share}]`, `expenseId`) o saldos (`kind:'pago'`, `from`, `to`). `who`/`payer` usan `'me'` para ti. Los saldos se llevan por moneda, relativos a ti; lo que te deben suma a Por cobrar y lo que debes a Por pagar en el patrimonio. Si marcas "Contar mi parte como gasto mío", se crea un gasto normal solo por tu parte (`expenses[].splitId`); saldar cuentas nunca es un gasto.
+
+- `goals[]` y `history[]` (nuevos, opcionales): metas con `log` de aportes, y una foto diaria del patrimonio (`{d, nw}`) que se guarda al abrir la app; dibujar pantallas nunca modifica los datos.
+- Movimientos importados llevan `importBatch` para poder deshacer el último lote.
 
 ## Criterios de cálculo
 

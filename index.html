@@ -297,6 +297,8 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
 </style>
 <link rel="stylesheet" href="./modern.css">
 <script src="./finance.js"></script>
+<script src="./split.js"></script>
+<script src="./importer.js"></script>
 </head>
 <body>
 
@@ -339,6 +341,7 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
   <header>
     <button class="hd-b" id="hd-l" aria-label="Volver" style="display:none">‹</button>
     <div id="hd-t">Resumen</div>
+    <button class="hd-b" id="hd-e" aria-label="Ocultar montos" aria-pressed="false"></button>
     <button class="hd-b" id="hd-r" aria-label="Ajustes">⚙</button>
   </header>
   <main>
@@ -359,6 +362,9 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
     <div class="screen" id="s-semanal"></div>
     <div class="screen" id="s-saava"></div>
     <div class="screen" id="s-solana"></div>
+    <div class="screen" id="s-split"></div>
+    <div class="screen" id="s-importar"></div>
+    <div class="screen" id="s-metas"></div>
     <div class="screen" id="s-tarjeta"></div>
     <div class="screen" id="s-ajustes"></div>
   </main>
@@ -476,7 +482,7 @@ function ssSet(k,v){ try{ sessionStorage.setItem(k,v); }catch(e){} }
 function normalize(d){
   d.expenses=d.expenses||[]; d.income=d.income||[]; d.receivables=d.receivables||[];
   d.payables=d.payables||[]; d.cards=d.cards||[]; d.investments=d.investments||[];
-  d.assets=d.assets||[]; d.cafe_hours=d.cafe_hours||[]; d.prices=d.prices||[]; d.solana=d.solana||[]; d.subscriptions=d.subscriptions||[];
+  d.assets=d.assets||[]; d.cafe_hours=d.cafe_hours||[]; d.prices=d.prices||[]; d.solana=d.solana||[]; d.subscriptions=d.subscriptions||[]; d.people=d.people||[]; d.splits=d.splits||[]; d.goals=d.goals||[]; d.history=d.history||[];
   d.solana.forEach(function(e){ if(e.balance===undefined && e.amount!==undefined) e.balance=Math.abs(e.amount); });
   d.settings=Object.assign({fx:4100,rate:17,weekly:250,theme:'claro'},d.settings||{});
   d.settings.budgets=d.settings.budgets||{};
@@ -489,7 +495,7 @@ function normalize(d){
     d.investments=d.investments.filter(function(i){return i.type!=="Vehículo"&&i.type!=="Liquidez";});
     move.forEach(function(m){d.assets.push({id:uid(),name:m.name,type:m.type,value:m.currentValue,currency:m.currency});});
   }
-  ["expenses","income","receivables","payables","cards","investments","assets","cafe_hours","prices","solana","subscriptions"].forEach(function(k){
+  ["expenses","income","receivables","payables","cards","investments","assets","cafe_hours","prices","solana","subscriptions","people","splits","goals"].forEach(function(k){
     d[k].forEach(function(o){if(!o.id)o.id=uid();});
   });
   migrarCategorias(d);
@@ -615,15 +621,21 @@ function probarStorage(){
 /* ═══════════════ HELPERS ═══════════════ */
 function fx(){return D.settings.fx||4100;}
 function toUSD(a,c){return c==="COP"? a/fx() : a;}
+/* Modo privado: el ojito de arriba tapa todos los montos. Siempre arranca visible. */
+var hideMoney=false, MASK="••••";
+function mask(txt){ return hideMoney?MASK:txt; }
 function money(v,dec){
+  if(hideMoney) return MASK;
   var s=v<0?"-":"";
   return s+"$"+Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:dec===0?0:2,maximumFractionDigits:dec===0?0:2});
 }
 function fmt(a,c){
+  if(hideMoney) return MASK;
   if(c==="COP") return (a<0?"-":"")+"$"+Math.round(Math.abs(a)).toLocaleString("es-CO");
   return money(a);
 }
 function kmoney(v){
+  if(hideMoney) return MASK;
   var a=Math.abs(v), s=v<0?"-":"";
   if(a>=10000) return s+"$"+(a/1000).toFixed(1).replace(/\.0$/,"")+"k";
   return money(v);
@@ -720,7 +732,8 @@ function totals(){
   var inv=sumUSD(D.investments,function(i){return i.currentValue;});
   var invC=sumUSD(D.investments,function(i){return i.costBase;});
   var ass=sumUSD(D.assets,function(a){return a.value;});
-  var cob=sumUSD(D.receivables), pag=sumUSD(D.payables);
+  var sp=Split.totalsUSD(D,fx());
+  var cob=sumUSD(D.receivables)+sp.owed, pag=sumUSD(D.payables)+sp.owe;
   var deu=sumUSD(D.cards,function(c){return c.balance;});
   return {inv:inv,invC:invC,ass:ass,cob:cob,pag:pag,deu:deu,
           nw:inv+ass+cob-deu-pag,
@@ -1636,7 +1649,7 @@ function render(s){
   ({colombia:rColombia,alertas:rAlertas,resumen:rResumen,movs:rMovs,tarjetas:rCards,portafolio:rPort,mas:rMas,
     cobrar:rCobrar,pagar:rPagar,horas:rHoras,ajustes:rAjustes,precios:rPrecios,
     presupuesto:rPresupuesto,subs:rSubs,tarjeta:rTarjeta,trabajo:rTrabajo,semanal:rSemanal,saava:rSaava,
-    solana:rSolana})[s]();
+    solana:rSolana,split:rSplit,importar:rImportar,metas:rMetas})[s]();
 }
 function refresh(){render(screen);}
 
@@ -1682,7 +1695,8 @@ function rResumen(){
       +'<div class="hero-chip"><div class="l">Cobrar</div><div class="v num g">'+kmoney(tot.cob)+'</div></div>'
       +'<div class="hero-chip"><div class="l">Deudas</div><div class="v num r">'+kmoney(tot.deu+tot.pag)+'</div></div>'
     +'</div></div>'
-
+   +flowSnapshot()
+   +nwCard()
    +areaOverview()+
    '<div class="sec">Atención hoy</div>'+alertCards()+
    '<div class="sec" style="margin-top:24px">Presupuesto'
@@ -1972,13 +1986,16 @@ function rMas(){
     +mi("🪙",T.cyn,"Bot Solana",(function(){var u=solanaUltimo();return u?money(toUSD(u.balance,u.currency)):"—";})(),"go('solana')")
     +mi("📈",T.blu,"Precios",D.prices.length+"","go('precios')")
     +'</div><div class="sec">Control</div><div class="menu">'
-    +mi("📆",T.blu,"Balance semanal","","go('semanal')")
+    +mi("📆",T.blu,"Flujo · semana y mes","","go('semanal')")
+    +mi("👥",T.pur,"Split · gastos compartidos",(function(){var t=Split.totalsUSD(D,fx());return Math.abs(t.net)<0.005?"al día":(t.net>0?"+":"")+money(t.net);})(),"go('split')")
     +mi("🎯",T.lima,"Presupuesto",money(presupuestoTotal()),"go('presupuesto')")
+    +mi("🏁",T.cyn,"Metas de ahorro",D.goals.length+"","go('metas')")
     +mi("🔁",T.ylw,"Suscripciones",
         money(totalSuscripcionesMes())+"/mes","go('subs')")
     +'</div>'
     +'<div class="sec">Datos</div>'
     +'<div class="menu">'
+    +mi("📥",T.grn,"Importar movimientos","CSV · mensajes","go('importar')")
     +mi("⬇️",T.blu,"Exportar respaldo","JSON","exportData()")
     +mi("⬆️",T.pur,"Importar respaldo","","importData()")
     +mi("⚙️",T.gris,"Ajustes","","go('ajustes')")
@@ -2035,7 +2052,7 @@ function rHoras(){
    '<div class="grid2" style="margin-bottom:10px">'
     +'<div class="tile"><div class="l">Total horas</div><div class="v num a">'+tot+'h</div>'
     +'<div class="s">'+hs.length+' turnos</div></div>'
-    +'<div class="tile"><div class="l">Estimado a $'+rate+'/h</div><div class="v num g">'+money(tot*rate)+'</div>'
+    +'<div class="tile"><div class="l">Estimado a '+mask('$'+rate)+'/h</div><div class="v num g">'+money(tot*rate)+'</div>'
     +'<div class="s">prom '+(hs.length?(tot/hs.length).toFixed(1):0)+'h/turno</div></div>'
    +'</div>'
    +(ms.length?'<div class="card" style="margin-bottom:6px"><div class="bars" style="height:110px">'
@@ -2586,6 +2603,10 @@ function delRec(coll,id){
 
 </script>
 <script src="./planning.js"></script>
+<script src="./flow.js"></script>
+<script src="./splitui.js"></script>
+<script src="./importui.js"></script>
+<script src="./metas.js"></script>
 <script src="./portfolio-bridge.js"></script>
 <script>
 /* ═══════════════ BOOT ═══════════════ */
@@ -2605,6 +2626,7 @@ function start(){
     if(con.length) curMonth=con[con.length-1];
   }
   aplicarTema(D.settings.theme||"claro",false);
+  if(typeof snapNW==="function") snapNW();
   if(window.matchMedia){
     var mq=window.matchMedia("(prefers-color-scheme: dark)");
     var onSys=function(){ if(D.settings.theme==="auto") aplicarTema("auto",true); };
@@ -2619,6 +2641,7 @@ function start(){
     setSession:function(value){publicSession=value;}
   });
   go("resumen");
+  if(typeof handleDeepLink==="function") handleDeepLink();
 }
 function tryLogin(){
   if(el("lock-in").value===PWD){ ssSet("a$_ok","1"); start(); }
@@ -2633,9 +2656,22 @@ el("sh-x").onclick=closeSheet;
 el("hd-l").onclick=function(){
   go({precios:"portafolio",tarjeta:"tarjetas"}[screen]||"mas");};
 el("hd-r").onclick=function(){go("ajustes");};
+var EYE='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+var EYE_OFF='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.9 17.9A10.4 10.4 0 0 1 12 19c-6.4 0-10-7-10-7a17.6 17.6 0 0 1 4.1-4.9M9.9 5.2A9.7 9.7 0 0 1 12 5c6.4 0 10 7 10 7a17.7 17.7 0 0 1-2.2 3.2M1 1l22 22"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+function setHide(v){
+  hideMoney=!!v;
+  var b=el("hd-e");
+  b.innerHTML=hideMoney?EYE_OFF:EYE;
+  b.setAttribute("aria-pressed",hideMoney?"true":"false");
+  b.setAttribute("aria-label",hideMoney?"Mostrar montos":"Ocultar montos");
+  render(screen);
+}
+el("hd-e").onclick=function(){setHide(!hideMoney);};
+el("hd-e").innerHTML=EYE;
 document.querySelectorAll("nav button").forEach(function(b){
   b.onclick=function(){go(b.dataset.s);};});
 document.addEventListener("keydown",function(e){if(e.key==="Escape")closeSheet();});
+window.addEventListener("hashchange",function(){ if(D&&typeof handleDeepLink==="function") handleDeepLink(); });
 
 if(ssGet("a$_ok")==="1") start();
 else el("lock-in").focus();
