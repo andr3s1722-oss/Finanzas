@@ -89,3 +89,22 @@ test('merge keeps goal contributions from both devices and card promos by id',()
  const m=C.merge(base,l,r);
  assert.deepEqual(m.goals[0].log.map(x=>x.id).sort(),['a','l','r']);assert.equal(m.goals[0].target,200);assert.equal(m.cards[0].promos.length,1);
 });
+
+test('email code sign-in: sends the code, verifies it, stores the session, rejects wrong codes',async()=>{
+ const calls=[];let verifyOk=true;
+ globalThis.document={getElementById:()=>null};globalThis.location={origin:'https://x.test',pathname:'/Finanzas/'};
+ globalThis.XMLHttpRequest=class{open(m,u){this.m=m;this.u=u;}setRequestHeader(){}
+  send(body){calls.push([this.m,this.u,body]);const url=this.u;
+   setTimeout(()=>{
+    if(url.includes('/auth/v1/otp')){this.status=200;this.responseText='{}';}
+    else if(url.includes('/auth/v1/verify')){const ok=verifyOk&&JSON.parse(body).token==='123456';this.status=ok?200:403;this.responseText=ok?JSON.stringify({access_token:'AT',refresh_token:'RT',expires_in:3600,user:{id:'u'}}):'{"error":"bad"}';}
+    this.onload();},0);}};
+ const P=require('../portfolio-bridge.js');
+ assert.equal(await P.signIn('yo@correo.com'),true);assert(P.status().includes('código'));
+ assert.equal(JSON.parse(calls[0][2]).email,'yo@correo.com');
+ assert.equal(await P.verifyCode('yo@correo.com','000000'),false);assert(P.status().includes('incorrecto'));assert.equal(await P.getSession(),null);
+ assert.equal(await P.verifyCode('yo@correo.com','12'),false);assert(P.status().includes('numérico'));
+ assert.equal(await P.verifyCode('yo@correo.com','123 456'),true);
+ const body=JSON.parse(calls.at(-1)[2]);assert.deepEqual(body,{type:'email',email:'yo@correo.com',token:'123456'});
+ const s=await P.getSession();assert.equal(s.access_token,'AT');assert.equal(s.refresh_token,'RT');assert(s.expires_at>Date.now()/1000);assert.equal(s.user,undefined);
+});

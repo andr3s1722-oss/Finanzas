@@ -229,7 +229,8 @@ test('Apple Pay link is always dollars unless it says COP, and never auto-detect
 
 test('cloud screen renders signed out and signed in, and every save pings the sync engine',()=>{
  const {ctx,el}=app();
- ctx.go('nube');assert(el('s-nube').innerHTML.includes('Enviar enlace'));assert(!el('s-nube').innerHTML.includes('undefined'));
+ ctx.go('nube');assert(el('s-nube').innerHTML.includes('Enviar código'));assert(!el('s-nube').innerHTML.includes('undefined'));
+ ctx.cloudStep='code';ctx.cloudPending='yo@correo.com';ctx.rNube();assert(el('s-nube').innerHTML.includes('cloud-otp'));assert(el('s-nube').innerHTML.includes('yo@correo.com'));ctx.cloudBack();assert(el('s-nube').innerHTML.includes('Enviar código'));
  const jwt='x.'+Buffer.from(JSON.stringify({email:'yo@correo.com'})).toString('base64url')+'.y';
  ctx.publicSession={access_token:jwt};ctx.rNube();
  assert(el('s-nube').innerHTML.includes('yo@correo.com'));assert(el('s-nube').innerHTML.includes('Sincronizar ahora'));

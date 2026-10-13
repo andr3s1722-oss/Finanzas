@@ -35,6 +35,7 @@ function cloudEmail(){
   if(!token)return '';var p=JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));return p.email||'';}catch(e){return '';}
 }
 function cloudWhen(iso){if(!iso)return 'Nunca';var d=new Date(iso);return isNaN(d)?'Nunca':d.toLocaleString('es-US',{dateStyle:'medium',timeStyle:'short'});}
+var cloudStep='email',cloudPending='';
 var CLOUD_LABEL={ok:'Sincronizado',syncing:'Sincronizando…','signed-out':'Sin conectar',offline:'Sin conexión',auth:'Sesión vencida','not-setup':'Falta activar la base de datos',conflict:'Cambios simultáneos',error:'Error'};
 function cloudShort(){
  if(!CloudSync)return '';var s=CloudSync.status();return s.state==='idle'?'':(CLOUD_LABEL[s.state]||'');
@@ -45,11 +46,18 @@ function rNube(){
  var signed=!!publicSession,email=cloudEmail();
  var head='<div class="dash-intro"><div class="eyebrow">Tus datos, en todos tus dispositivos</div><h1>Nube.</h1><p>Se sincroniza solo entre tu iPhone, la app instalada y el navegador. Tu respaldo JSON sigue funcionando igual.</p></div>';
  if(!signed){
-  el('s-nube').innerHTML=head+'<div class="card"><div class="f"><label for="cloud-email">Tu correo</label><input id="cloud-email" type="email" autocomplete="email" placeholder="tu@correo.com" value="'+esc(sGet('finanzas_public_email_v1')||'')+'"></div>'
-   +'<button class="btn" style="width:100%" onclick="cloudSignIn()">Enviar enlace</button><div class="note" style="padding:10px 0 0">Te llega un enlace seguro, sin contraseña. '+esc((window.PublicSync?PublicSync.status():'')||'')+'</div></div>'
-   +'<div class="sec">¿Abriste el enlace en Safari y usas la app instalada?</div><div class="card"><p class="note" style="padding-top:0">iOS guarda la sesión por separado. En Safari toca <b>Copiar conexión</b> y pégala aquí.</p>'
-   +'<div class="f"><textarea id="cloud-code" rows="3" placeholder="Pega aquí el código" style="width:100%;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:13px"></textarea></div>'
-   +'<div class="dash-actions" style="margin:0"><button onclick="cloudUseCode()">Conectar con el código</button><button onclick="PublicSync.copyConnection().then(rNube)">Copiar conexión</button></div></div>';
+  var intro=cloudStep==='code'
+   ?'<div class="card"><p class="note" style="padding-top:0">Te enviamos un código a <b>'+esc(cloudPending)+'</b>. Escríbelo aquí (revisa también el correo no deseado).</p>'
+    +'<div class="f"><label for="cloud-otp">Código</label><input id="cloud-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456" style="font-size:22px;letter-spacing:.25em;text-align:center"></div>'
+    +'<button class="btn" style="width:100%" onclick="cloudVerify()">Entrar</button>'
+    +'<div class="dash-actions" style="margin:12px 0 0"><button onclick="cloudBack()">Cambiar correo o reenviar</button></div>'
+    +'<div class="note" style="padding:10px 0 0">'+esc((window.PublicSync?PublicSync.status():'')||'')+'</div></div>'
+   :'<div class="card"><div class="f"><label for="cloud-email">Tu correo</label><input id="cloud-email" type="email" autocomplete="email" placeholder="tu@correo.com" value="'+esc(cloudPending||sGet('finanzas_public_email_v1')||'')+'"></div>'
+    +'<button class="btn" style="width:100%" onclick="cloudSignIn()">Enviar código</button><div class="note" style="padding:10px 0 0">Sin contraseña: te llega un código de un solo uso. '+esc((window.PublicSync?PublicSync.status():'')||'')+'</div></div>';
+  el('s-nube').innerHTML=head+intro
+   +'<details class="card" style="margin-top:12px"><summary style="cursor:pointer;min-height:44px;font-weight:650">¿Prefieres usar el enlace del correo?</summary><p class="note" style="padding-top:8px">El enlace se abre en Safari. Si usas la app instalada, en Safari toca <b>Copiar conexión</b> y pega el código aquí.</p>'
+   +'<div class="f"><textarea id="cloud-code" rows="3" placeholder="Pega aquí el código de conexión" style="width:100%;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:13px"></textarea></div>'
+   +'<div class="dash-actions" style="margin:0"><button onclick="cloudUseCode()">Conectar con el código</button><button onclick="PublicSync.copyConnection().then(rNube)">Copiar conexión</button></div></details>';
   return;
  }
  var bad=s.state==='not-setup'?'<div class="warn">Falta crear la tabla en Supabase. Abre <b>supabase/migrations/20261013000000_cloud_sync.sql</b> del repositorio, pégalo en Supabase → SQL Editor y ejecútalo. Luego toca Sincronizar.</div>'
@@ -65,7 +73,9 @@ function rNube(){
   +mi('🔌',T.red,'Desconectar este dispositivo','',"cloudSignOut()")+'</div>'
   +'<div class="note" style="padding-top:12px">Cuando dos dispositivos cambian a la vez, se mezclan los cambios de cada uno: nada se pierde, y si ambos tocan el mismo dato gana el de este dispositivo. Antes de aplicar cambios de la nube se guarda una copia local para poder restaurarla.</div>';
 }
-async function cloudSignIn(){var v=el('cloud-email').value.trim();if(!v)return toast('Escribe tu correo');await PublicSync.signIn(v);rNube();}
+async function cloudSignIn(){var v=el('cloud-email').value.trim();if(!v)return toast('Escribe tu correo');var ok=await PublicSync.signIn(v);if(ok){cloudStep='code';cloudPending=v;}rNube();if(ok&&el('cloud-otp'))el('cloud-otp').focus();}
+async function cloudVerify(){var code=el('cloud-otp').value;var ok=await PublicSync.verifyCode(cloudPending,code);if(ok){cloudStep='email';cloudPending='';if(CloudSync)CloudSync.touch(300);toast('Cuenta conectada ✓');}else toast(PublicSync.status()||'Código incorrecto');rNube();}
+function cloudBack(){cloudStep='email';rNube();}
 async function cloudUseCode(){var v=el('cloud-code').value.trim();if(!v)return toast('Pega primero el código');await PublicSync.useConnection(v);rNube();if(CloudSync)CloudSync.touch(300);}
 async function cloudSyncNow(){if(!CloudSync)return;toast('Sincronizando…');await CloudSync.sync();rNube();var s=CloudSync.status();toast(s.state==='ok'?'Sincronizado ✓':(s.message||'No se pudo sincronizar'));}
 async function cloudForce(mode){
