@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const F=require('../finance.js');
 const S=require('../split.js');
 const I=require('../importer.js');
+const Cl=require('../cloud.js');
 const PublicSync=require('../portfolio-bridge.js');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const empty=()=>({expenses:[],income:[],cafe_hours:[],assets:[],payables:[],cards:[],settings:{fx:4000,rate:17,weekly:250}});
@@ -16,9 +17,9 @@ test('deficit, zero income, negative initial cash and scheduled debt alerts',()=
 function app(){
  const store=new Map(),nodes=new Map(),el=id=>{if(!nodes.has(id))nodes.set(id,{style:{},classList:{add(){},remove(){},toggle(){}},value:'',innerHTML:'',focus(){},setAttribute(){},querySelectorAll(){return []}});return nodes.get(id);};
  const doc={getElementById:el,querySelectorAll(){return []},addEventListener(){},documentElement:{setAttribute(){}}};
- const ctx=vm.createContext({Finance:F,Split:S,Importer:I,URLSearchParams,location:{hash:'',origin:'https://x.test',pathname:'/Finanzas/',search:''},history:{replaceState(){}},document:doc,window:{scrollTo(){},addEventListener(){}},setTimeout(){},clearTimeout(){},console,sessionStorage:{getItem(){return null}},localStorage:{getItem(k){return store.has(k)?store.get(k):null},setItem(k,v){store.set(k,String(v))}},confirm(){return true}});
+ const ctx=vm.createContext({Finance:F,Split:S,Importer:I,Cloud:Cl,atob:globalThis.atob,URLSearchParams,location:{hash:'',origin:'https://x.test',pathname:'/Finanzas/',search:''},history:{replaceState(){}},document:doc,window:{scrollTo(){},addEventListener(){}},setTimeout(){},clearTimeout(){},console,sessionStorage:{getItem(){return null}},localStorage:{getItem(k){return store.has(k)?store.get(k):null},setItem(k,v){store.set(k,String(v))}},confirm(){return true}});
  const dir=path.join(__dirname,'..'),html=fs.readFileSync(path.join(dir,'index.html'),'utf8');
- for(const m of html.matchAll(/<script(?: src="([^"]+)")?>([\s\S]*?)<\/script>/g)){if(m[1]){if(/planning|flow|splitui|importui|metas/.test(m[1]))vm.runInContext(fs.readFileSync(path.join(dir,m[1]),'utf8'),ctx);}else vm.runInContext(m[2],ctx);}
+ for(const m of html.matchAll(/<script(?: src="([^"]+)")?>([\s\S]*?)<\/script>/g)){if(m[1]){if(/planning|flow|splitui|importui|metas|cloudui/.test(m[1]))vm.runInContext(fs.readFileSync(path.join(dir,m[1]),'utf8'),ctx);}else vm.runInContext(m[2],ctx);}
  ctx.D=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));ctx.curMonth='2026-09';return {ctx,el};
 }
 test('legacy JSON roundtrip preserves custom fields, balances, IDs and references',()=>{const {ctx}=app();const fixture={...empty(),custom:{kept:true},investments:[],income:[{id:'tip',source:'Propinas',date:'2026-09-07',amount:40,currency:'USD',custom:'keep'}],expenses:[{id:'e',date:'2026-09-07',desc:'Groceries',category:'Mercado',amount:80,currency:'USD',spread:4}],cafe_hours:[{id:'h',date:'2026-09-07',hours:6,tipId:'tip'}],assets:[{id:'car',name:'Jetta',type:'Vehículo',value:6000,currency:'USD'}]};let normalized=ctx.normalize(structuredClone(fixture));let roundtrip=ctx.normalize(JSON.parse(JSON.stringify(normalized)));assert.equal(JSON.stringify(roundtrip),JSON.stringify(normalized));assert.equal(roundtrip.custom.kept,true);assert.equal(roundtrip.income[0].custom,'keep');assert.equal(roundtrip.cafe_hours[0].tipId,'tip');assert.equal(roundtrip.assets.length,1);});
@@ -224,4 +225,14 @@ test('Apple Pay link is always dollars unless it says COP, and never auto-detect
  el('f-desc').value='Oxxo';el('f-amount').value='4500';ctx.updWeek();assert.equal(ctx._cur,'USD');
  ctx.location.hash='#add?monto=45.900&desc=Rappi';ctx.handleDeepLink();assert.equal(ctx._cur,'USD');
  ctx.location.hash='#add?monto=4500&desc=Oxxo&moneda=COP';ctx.handleDeepLink();assert.equal(ctx._cur,'COP');
+});
+
+test('cloud screen renders signed out and signed in, and every save pings the sync engine',()=>{
+ const {ctx,el}=app();
+ ctx.go('nube');assert(el('s-nube').innerHTML.includes('Enviar enlace'));assert(!el('s-nube').innerHTML.includes('undefined'));
+ const jwt='x.'+Buffer.from(JSON.stringify({email:'yo@correo.com'})).toString('base64url')+'.y';
+ ctx.publicSession={access_token:jwt};ctx.rNube();
+ assert(el('s-nube').innerHTML.includes('yo@correo.com'));assert(el('s-nube').innerHTML.includes('Sincronizar ahora'));
+ let pings=0;ctx.cloudTouch=()=>{pings++;};ctx.save();assert.equal(pings,1);
+ ctx.go('mas');assert(el('s-mas').innerHTML.includes('Nube y dispositivos'));
 });

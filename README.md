@@ -13,6 +13,7 @@ La versión original contenía únicamente `index.html`: estilos, pantallas, cá
 - `split.js` / `splitui.js`: gastos compartidos tipo Splitwise (cálculo puro e interfaz).
 - `importer.js` / `importui.js`: importar movimientos desde mensajes pegados (Nequi, Nu, bancos de EE. UU.) o CSV, con detección de duplicados, deshacer la última importación, exportación CSV y enlace `#add?...` para Atajos.
 - `metas.js`: metas de ahorro (aportes y ritmo semanal necesario).
+- `cloud.js` / `cloudui.js`: sincronización en la nube (Supabase). Un documento JSON por usuario con control de versión; merge de 3 vías en el cliente (lo añadido/editado/borrado en cada dispositivo se combina; si ambos tocan el mismo campo gana el dispositivo actual). Antes de aplicar cambios remotos se guarda una copia local (`finanzas_andres_v3_precloud`). Reusa la sesión por correo de Public. Requiere ejecutar `supabase/migrations/20261013000000_cloud_sync.sql` en el SQL Editor; sin la tabla la app avisa y sigue funcionando local. Los datos viven en tu proyecto de Supabase sin cifrado de extremo a extremo.
 - `modern.css`: diseño adaptable, temas claro/oscuro, foco y movimiento reducido.
 - `tests/finance.test.cjs`: pruebas sin dependencias externas.
 
@@ -47,7 +48,7 @@ Sin `area`, Saava se reconoce por `category` o `venture`; Ninas y Sequo se agrup
 ## Verificación
 
 ```sh
-node --test tests/finance.test.cjs
+node --test tests/*.test.cjs
 python3 -m http.server 8765 --bind 127.0.0.1
 ```
 
