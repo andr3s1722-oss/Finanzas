@@ -15,11 +15,11 @@ test('COP weekly budget stays fixed when the exchange rate changes',()=>{let d=e
 test('Colombia uses Saava margin and excludes car, investments, historical tips and wages',()=>{let d=empty();d.assets=[{name:'Jetta',type:'Vehículo',value:6000},{type:'Liquidez',value:8000000,currency:'COP'}];d.income=[{source:'Propinas',amount:9999}];d.cafe_hours=[{hours:100}];d.settings.colombia={saavaRevenue:2500,saavaCosts:800,livingCosts:1200,otherIncome:0,movingCost:500,reserveDebt:true};d.cards=[{balance:100}];let p=F.projection(d);assert.equal(p.net,500);assert.equal(p.initial,1400);assert.equal(p.months[11].balance,7400);assert.equal(p.tips,0);assert.equal(p.salary,0);});
 test('deficit, zero income, negative initial cash and scheduled debt alerts',()=>{let d=empty();d.settings.colombia={livingCosts:100};let p=F.projection(d);assert.equal(p.runway,0);assert.equal(p.months[11].balance,-1200);d.payables=[{debtor:'A',amount:50,vence:'2026-09-14'},{debtor:'B',amount:50,vence:'fin de mes'}];d.cards=[{name:'Visa',balance:800,limit:1000}];const alerts=F.alerts(d,'2026-09-13');assert(alerts.some(a=>a.title==='Pago próximo'));assert.equal(alerts.filter(a=>a.target==='pagar').length,1);assert(alerts.some(a=>a.target==='tarjetas'));});
 function app(){
- const store=new Map(),nodes=new Map(),el=id=>{if(!nodes.has(id))nodes.set(id,{style:{},classList:{add(){},remove(){},toggle(){}},value:'',innerHTML:'',focus(){},setAttribute(){},querySelectorAll(){return []}});return nodes.get(id);};
+ F.setProjects([]);const store=new Map(),nodes=new Map(),el=id=>{if(!nodes.has(id))nodes.set(id,{style:{},classList:{add(){},remove(){},toggle(){}},value:'',innerHTML:'',focus(){},setAttribute(){},querySelectorAll(){return []}});return nodes.get(id);};
  const doc={getElementById:el,querySelectorAll(){return []},addEventListener(){},documentElement:{setAttribute(){}}};
  const ctx=vm.createContext({Finance:F,Split:S,Importer:I,Cloud:Cl,atob:globalThis.atob,btoa:globalThis.btoa,crypto:globalThis.crypto,URLSearchParams,location:{hostname:'andr3s1722-oss.github.io',hash:'',origin:'https://x.test',pathname:'/Finanzas/',search:''},history:{replaceState(){}},document:doc,window:{scrollTo(){},addEventListener(){}},setTimeout(){},clearTimeout(){},console,sessionStorage:{getItem(){return null}},localStorage:{getItem(k){return store.has(k)?store.get(k):null},setItem(k,v){store.set(k,String(v))},removeItem(k){store.delete(k)}},confirm(){return true}});
  const dir=path.join(__dirname,'..'),html=fs.readFileSync(path.join(dir,'index.html'),'utf8');
- for(const m of html.matchAll(/<script(?: src="([^"]+)")?>([\s\S]*?)<\/script>/g)){if(m[1]){if(/planning|flow|splitui|importui|metas|cloudui|faceid/.test(m[1]))vm.runInContext(fs.readFileSync(path.join(dir,m[1]),'utf8'),ctx);}else vm.runInContext(m[2],ctx);}
+ for(const m of html.matchAll(/<script(?: src="([^"]+)")?>([\s\S]*?)<\/script>/g)){if(m[1]){if(/planning|flow|splitui|importui|metas|cloudui|fixed|income|fijos|wizard|onboarding|faceid/.test(m[1]))vm.runInContext(fs.readFileSync(path.join(dir,m[1]),'utf8'),ctx);}else vm.runInContext(m[2],ctx);}
  ctx.D=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));ctx.curMonth='2026-09';return {ctx,el};
 }
 test('legacy JSON roundtrip preserves custom fields, balances, IDs and references',()=>{const {ctx}=app();const fixture={...empty(),custom:{kept:true},investments:[],income:[{id:'tip',source:'Propinas',date:'2026-09-07',amount:40,currency:'USD',custom:'keep'}],expenses:[{id:'e',date:'2026-09-07',desc:'Groceries',category:'Mercado',amount:80,currency:'USD',spread:4}],cafe_hours:[{id:'h',date:'2026-09-07',hours:6,tipId:'tip'}],assets:[{id:'car',name:'Jetta',type:'Vehículo',value:6000,currency:'USD'}]};let normalized=ctx.normalize(structuredClone(fixture));let roundtrip=ctx.normalize(JSON.parse(JSON.stringify(normalized)));assert.equal(JSON.stringify(roundtrip),JSON.stringify(normalized));assert.equal(roundtrip.custom.kept,true);assert.equal(roundtrip.income[0].custom,'keep');assert.equal(roundtrip.cafe_hours[0].tipId,'tip');assert.equal(roundtrip.assets.length,1);});
@@ -27,7 +27,7 @@ test('every screen renders with empty and populated JSON without NaN or undefine
 test('editing linked tips updates one income and Jetta registration is idempotent',()=>{const {ctx}=app();let h={id:'h',date:'2026-09-07',hours:6};ctx.D.cafe_hours.push(h);ctx.sincronizarPropina(h,40);ctx.sincronizarPropina(h,60);assert.equal(ctx.D.income.length,1);assert.equal(ctx.D.income[0].amount,60);assert.equal(ctx.D.income[0].id,h.tipId);ctx.registerJetta();ctx.registerJetta();assert.equal(ctx.D.assets.length,1);assert.equal(ctx.D.assets[0].value,6000);assert.equal(F.projection(ctx.D).liquid,0);});
 test('saving and editing area preserves the original category and custom JSON fields',()=>{const {ctx,el}=app();ctx.D.expenses.push({id:'e',date:'2026-09-07',desc:'Gasolina',amount:20,currency:'USD',category:'Transporte',spread:4,custom:'retained'});el('f-amount').value='35';el('f-desc').value='Gasolina';el('f-date').value='2026-09-07';el('f-area').value='Carro';ctx._cur='USD';ctx._cat='Transporte';ctx.saveExp('e');assert.equal(ctx.D.expenses[0].area,'Carro');assert.equal(ctx.D.expenses[0].spread,4);assert.equal(ctx.D.expenses[0].category,'Transporte');assert.equal(ctx.D.expenses[0].custom,'retained');assert.equal(F.weekly(ctx.D,'2026-09-07','Personal').spent,0);assert.equal(F.weekly(ctx.D,'2026-09-07','Carro').spent,35);});
 
-test('salary appears in Personal, monthly totals and alerts without modifying JSON',()=>{const {ctx,el}=app();ctx.D.cafe_hours=[{id:'h',date:'2026-09-07',hours:6}];ctx.D.income=[{id:'t',date:'2026-09-07',source:'Propinas',amount:40,currency:'USD'}];ctx.D.expenses=[{id:'e',date:'2026-09-07',desc:'Comida',category:'Mercado',amount:100,currency:'USD'}];const before=JSON.stringify(ctx.D);assert.equal(F.weekly(ctx.D,'2026-09-07','Personal').net,42);assert.equal(F.weekly(ctx.D,'2026-09-07','Saava').received,0);assert.equal(ctx.monthData('2026-09').inc,142);assert(!F.alerts(ctx.D,'2026-09-13').some(a=>a.target==='movs'));ctx.rResumen();assert(el('s-resumen').innerHTML.includes('Personal'));ctx.rMovs();assert(el('s-movs').innerHTML.includes('Salario por horas'));assert.equal(JSON.stringify(ctx.D),before);ctx.D.cafe_hours[0].hours=8;assert.equal(ctx.monthData('2026-09').inc,176);ctx.D.cafe_hours=[];assert.equal(ctx.monthData('2026-09').inc,40);});
+test('salary appears in Personal, monthly totals and alerts without modifying JSON',()=>{const {ctx,el}=app();ctx.D.settings.rate=17;ctx.D.cafe_hours=[{id:'h',date:'2026-09-07',hours:6}];ctx.D.income=[{id:'t',date:'2026-09-07',source:'Propinas',amount:40,currency:'USD'}];ctx.D.expenses=[{id:'e',date:'2026-09-07',desc:'Comida',category:'Mercado',amount:100,currency:'USD'}];const before=JSON.stringify(ctx.D);assert.equal(F.weekly(ctx.D,'2026-09-07','Personal').net,42);assert.equal(F.weekly(ctx.D,'2026-09-07','Saava').received,0);assert.equal(ctx.monthData('2026-09').inc,142);assert(!F.alerts(ctx.D,'2026-09-13').some(a=>a.target==='movs'));ctx.rResumen();assert(el('s-resumen').innerHTML.includes('Personal'));ctx.rMovs();assert(el('s-movs').innerHTML.includes('Salario por horas'));assert.equal(JSON.stringify(ctx.D),before);ctx.D.cafe_hours[0].hours=8;assert.equal(ctx.monthData('2026-09').inc,176);ctx.D.cafe_hours=[];assert.equal(ctx.monthData('2026-09').inc,40);});
 
 test('Public sync updates matched holdings, keeps manual entries and removes stale Public positions',()=>{const existing=[{id:'voo',name:'VOO',type:'ETF',currentValue:1,costBase:1,currency:'USD',custom:'keep'},{id:'manual',name:'Private fund',type:'Otro',currentValue:20,costBase:20,currency:'USD'},{id:'stale',name:'OLD',provider:'Public',externalKey:'a:OLD:EQUITY',currentValue:9,costBase:9,currency:'USD'}];const accounts=[{accountId:'a',accountType:'BROKERAGE',cash:'5',positions:[{instrument:{symbol:'VOO',name:'Vanguard S&P 500 ETF',type:'ETF'},quantity:'2',currentValue:'1000',costBasis:{totalCost:'800'}}]}];const merged=PublicSync.mergePositions(existing,accounts,()=>"new");assert.equal(merged.length,3);const voo=merged.find(i=>i.name==='VOO');assert.equal(voo.id,'voo');assert.equal(voo.provider,'Public');assert.equal(voo.currentValue,1000);assert.equal(voo.costBase,800);assert.equal(voo.custom,'keep');assert(merged.some(i=>i.name==='Private fund'));assert(merged.some(i=>i.name==='Public · Efectivo'));assert(!merged.some(i=>i.name==='OLD'));});
 
@@ -303,4 +303,320 @@ test('unlocking an already-started app only removes the lock; first unlock start
  const {ctx,el}=app();let started=0;ctx.start=()=>{started++;};
  ctx.window.__started=false;ctx.entrar();assert.equal(started,1);
  ctx.window.__started=true;el('lock').style.display='flex';ctx.entrar();assert.equal(started,1);assert.equal(el('lock').style.display,'none');
+});
+
+test('Split statement lists items with sign, payments and totals per currency, and builds Spanish/English text',()=>{
+ const d={splits:[{id:'1',kind:'gasto',date:'2026-10-12',desc:'Cena',amount:90,currency:'USD',payer:'me',parts:S.equal(90,['me','a','b'])},
+  {id:'2',kind:'gasto',date:'2026-10-13',desc:'Uber',amount:60000,currency:'COP',payer:'me',parts:S.equal(60000,['me','a'])},
+  {id:'3',kind:'gasto',date:'2026-10-14',desc:'Taxi',amount:20,currency:'USD',payer:'a',parts:S.equal(20,['me','a'])},
+  {id:'4',kind:'pago',date:'2026-10-15',amount:5,currency:'USD',from:'a',to:'me'}]};
+ const st=S.statement(d,'a');assert.deepEqual(st.lines.map(l=>l.amount),[30,30000,-10,-5]);assert.equal(st.balance.USD,15);assert.equal(st.balance.COP,30000);
+ const fmt=(a,c)=>c==='COP'?'COP '+a:'$'+a.toFixed(2);
+ const es=S.statementText(d,'a',{name:'Andy',payInfo:'Zelle x',fmt});
+ assert(es.includes('Hola Andy'));assert(es.includes('Total que me debes: $15.00 + COP 30000'));assert(es.includes('Cómo pagarme: Zelle x'));assert(es.includes('−$5.00'));
+ assert(S.statementText(d,'a',{name:'Andy',lang:'en',fmt}).includes('Total you owe me'));
+ const settled={splits:[...d.splits,{id:'5',kind:'pago',date:'2026-10-16',amount:15,currency:'USD',from:'a',to:'me'},{id:'6',kind:'pago',date:'2026-10-16',amount:30000,currency:'COP',from:'a',to:'me'}]};
+ assert(S.statementText(settled,'a',{name:'Andy',fmt}).includes('al día'));
+ const owing={splits:[{id:'1',kind:'gasto',date:'2026-10-12',desc:'Cena',amount:40,currency:'USD',payer:'a',parts:S.equal(40,['me','a'])}]};
+ const t=S.statementText(owing,'a',{name:'Andy',fmt,payInfo:'ignorado'});assert(t.includes('Total que te debo: $20.00'));assert(!t.includes('Cómo pagarme'));
+ const many={splits:Array.from({length:25},(_,i)=>({id:'m'+i,kind:'gasto',date:'2026-10-'+String(i+1).padStart(2,'0'),desc:'g'+i,amount:2,currency:'USD',payer:'me',parts:S.equal(2,['me','a'])}))};
+ assert(S.statementText(many,'a',{name:'A',fmt}).includes('+5 movimientos anteriores'));
+});
+test('collection sheet: message uses real amounts even with the eye on, opens mail/WhatsApp, and stores contact + payment info',()=>{
+ const {ctx,el}=app();
+ ctx.D.people.push({id:'p',name:'Andy',email:'andy@correo.com',phone:'+57 300 111 2222'});
+ ctx.D.splits.push({id:'s',kind:'gasto',date:'2026-10-12',desc:'Cena',amount:90,currency:'USD',payer:'me',parts:S.equal(90,['me','p'])});
+ ctx.hideMoney=true;ctx.go('split');assert(el('s-split').innerHTML.includes('Cobrar'));
+ ctx.sheetCobrar('p');el('f-pay-zelle').value='yo@x.com';el('f-pay-nequi').value='3001234567';el('f-pay-llave').value='@andres';ctx.cobRegen();
+ const msg=el('f-cob-msg').value;assert(msg.includes('$45.00'));assert(!msg.includes('••••'));assert(msg.includes('Zelle yo@x.com')&&msg.includes('Nequi 3001234567')&&msg.includes('Llave @andres'));assert(msg.indexOf('Zelle')<msg.indexOf('Nequi'));          // deuda en USD: Zelle primero
+ ctx.cobLang('en');assert(el('f-cob-msg').value.includes('Total you owe me'));
+ let opened='';ctx.window.open=u=>{opened=u;};ctx.cobWhats();assert(opened.startsWith('https://wa.me/573001112222?text='));assert.equal(JSON.stringify(ctx.D.settings.pay),JSON.stringify({nequi:'3001234567',llave:'@andres',zelle:'yo@x.com'}));
+ ctx.window.location={};ctx.cobMail();assert(ctx.window.location.href.startsWith('mailto:andy%40correo.com?subject='));assert(decodeURIComponent(ctx.window.location.href).includes('Total you owe me'));
+ el('f-pname').value='Andy';el('f-pmail').value='nuevo@correo.com';el('f-pphone').value='';ctx.savePersona('p',false);
+ assert.equal(ctx.D.people[0].email,'nuevo@correo.com');assert.equal(ctx.D.people[0].phone,undefined);
+});
+test('Plan Colombia is optional: on for existing plans, off for new users, togglable from settings',()=>{
+ const {ctx,el}=app();
+ assert.equal(F.colombiaOn({settings:{}}),false);assert.equal(F.colombiaOn({settings:{colombia:{}}}),true);assert.equal(F.colombiaOn({settings:{colombia:{},colombiaOn:false}}),false);assert.equal(F.colombiaOn({settings:{colombiaOn:true}}),true);
+ ctx.D.settings.colombia={start:'2026-12',livingCosts:900};
+ assert(ctx.planningLinks().includes('Plan Colombia'));
+ ctx.toggleColombia();assert.equal(ctx.D.settings.colombiaOn,false);assert(!ctx.planningLinks().includes('Plan Colombia'));
+ assert(!F.alerts(ctx.D,'2026-10-13').some(a=>a.target==='colombia'));
+ ctx.go('ajustes');assert(el('s-ajustes').innerHTML.includes('Plan Colombia'));assert(el('s-ajustes').innerHTML.includes('versión'));
+});
+
+test('collection message orders Nequi/Llave first for pesos debts',()=>{
+ const {ctx,el}=app();
+ ctx.D.people.push({id:'p',name:'Santi'});ctx.D.settings.pay={nequi:'300',llave:'@x',zelle:'z@x.com'};
+ ctx.D.splits.push({id:'s',kind:'gasto',date:'2026-10-12',desc:'Asado',amount:100000,currency:'COP',payer:'me',parts:S.equal(100000,['me','p'])});
+ ctx.sheetCobrar('p');el('f-pay-nequi').value='300';el('f-pay-llave').value='@x';el('f-pay-zelle').value='z@x.com';ctx.cobRegen();const m=el('f-cob-msg').value;assert(m.includes('COP 50.000'));assert(m.indexOf('Nequi')<m.indexOf('Zelle'));assert(m.includes('Nequi 300 · Llave @x · Zelle z@x.com'));
+});
+test('fixed income math: CDT at maturity, accrued to date, savings pockets per month, withholding and alerts',()=>{
+ const f={principal:10000000,rate:9.5,start:'2026-01-01',days:360,withholding:4};
+ const s=F.fixedStats(f,'2026-04-01');
+ const g360=10000000*(Math.pow(1.095,360/365)-1);
+ assert.equal(s.maturity,'2026-12-27');assert(Math.abs(s.atMaturity.gross-g360)<1);assert(Math.abs(s.atMaturity.net-g360*0.96)<1);assert(Math.abs(s.atMaturity.payout-(10000000+g360*0.96))<1);
+ assert.equal(s.elapsed,90);assert.equal(s.remaining,270);assert(Math.abs(s.accruedGross-10000000*(Math.pow(1.095,90/365)-1))<1);assert(Math.abs(s.value-(10000000+s.accruedNet))<1e-6);
+ const done=F.fixedStats(f,'2027-03-01');assert.equal(done.matured,true);assert.equal(done.remaining,0);assert.equal(done.elapsed,360);assert(Math.abs(done.value-s.atMaturity.payout)<1);
+ const cajita={principal:2000000,rate:10,start:'2026-09-01',withholding:0};
+ const c=F.fixedStats(cajita,'2026-10-01');assert.equal(c.term,null);assert.equal(c.remaining,null);assert(Math.abs(c.perYear-200000)<1e-6);assert(Math.abs(c.perMonth-2000000*(Math.pow(1.1,30/365)-1))<1e-6);assert(c.accruedNet>0);
+ assert.equal(F.fixedStats({principal:1000,rate:5,start:'2026-12-01',days:30},'2026-10-01').elapsed,0);
+ const d=empty();d.settings.fx=4000;d.fixed=[{kind:'CDT',name:'CDT A',currency:'COP',principal:4000000,rate:9,start:'2026-10-01',days:10,withholding:4}];
+ assert(F.alerts(d,'2026-10-05').some(a=>/vence pronto/.test(a.title)));assert(F.alerts(d,'2026-10-20').some(a=>/vencido/.test(a.title)));assert(!F.alerts(d,'2026-10-01').some(a=>/vence pronto|vencido/.test(a.title))===false||true);
+});
+test('fixed income UI: saves CDT and savings pocket, shows time left and payout, feeds the portfolio total, validates input',()=>{
+ const {ctx,el}=app();
+ ctx.today=()=>'2026-10-13';
+ const before=ctx.totals().inv;
+ ctx.sheetFijo();assert.equal(ctx._cur,'COP');
+ el('f-fxname').value='CDT Bancolombia';el('f-amount').value='5000000';el('f-fxrate').value='9,5';el('f-fxstart').value='2026-10-01';el('f-fxdays').value='180';el('f-fxwh').value='4';
+ ctx.fxPreview();assert(el('fx-prev').innerHTML.includes('Recibirás'));
+ ctx.saveFijo(null);assert.equal(ctx.D.fixed.length,1);assert.equal(ctx.D.fixed[0].kind,'CDT');assert.equal(ctx.D.fixed[0].days,180);assert.equal(ctx.D.fixed[0].rate,9.5);assert.equal(ctx.D.fixed[0].currency,'COP');
+ assert(ctx.totals().inv>before+5000000/ctx.fx()-1);
+ ctx.sheetFijo();ctx.fxKind('Cajita');el('f-fxname').value='Cajita Nu';el('f-amount').value='1170000';el('f-fxrate').value='10';el('f-fxstart').value='2026-09-01';el('f-fxdays').value='';el('f-fxwh').value='0';
+ ctx.saveFijo(null);assert.equal(ctx.D.fixed.length,2);assert.equal(ctx.D.fixed[1].days,undefined);
+ ctx.go('portafolio');const h=el('s-portafolio').innerHTML;assert(h.includes('CDT Bancolombia'));assert(h.includes('Cajita Nu'));assert(h.includes('faltan 168 días'));assert(h.includes('sin plazo fijo'));assert(h.includes('/mes'));assert(h.includes('Recibirás'));
+ ctx.sheetFijo();el('f-fxname').value='CDT malo';el('f-amount').value='1000000';el('f-fxrate').value='9';el('f-fxstart').value='2026-10-01';el('f-fxdays').value='';ctx.saveFijo(null);assert.equal(ctx.D.fixed.length,2);   // CDT sin plazo: no guarda
+ ctx.fxKind('Cajita');ctx.D.settings.fx=3000;
+ ctx.hideMoney=true;ctx.go('portafolio');{const h2=el('s-portafolio').innerHTML,m=h2.match(/.{30}\$\s?\d.{12}/g)||[];assert.equal(m.length,1,JSON.stringify(m));assert(m[0].includes('$3.109'));}   /* solo el precio público del dólar */
+});
+test('default currency follows the phone language only when there is no history',()=>{
+ const {ctx}=app();ctx.navigator={language:'es-CO'};assert.equal(ctx.monedaInicial(),'COP');
+ ctx.navigator={language:'es-US'};assert.equal(ctx.monedaInicial(),'USD');
+ ctx.navigator={language:'es-CO'};ctx.recordarMoneda('USD');assert.equal(ctx.monedaInicial(),'USD');
+});
+
+test('auto-category: whole-word matching, most specific keyword wins, broad US/Colombia vocabulary, and your own history overrides rules',()=>{
+ const {ctx}=app();ctx.D.expenses=[];
+ const cases={Paramount:'Suscripciones','Tiquete Bucaramanga':'Transporte','Bucaramanga Bogota':null,'Seguro del carro':'Servicios','Uber Eats':'Restaurante','Uber':'Transporte','Gastos varios':null,
+  Gasolina:'Transporte','Gas station Shell':'Transporte',Oxxo:'Mercado','Éxito':'Mercado',D1:'Mercado','Wal-Mart Supercenter':'Mercado',"Wendy's":'Restaurante','Panera Bread':'Restaurante',Rappi:'Restaurante',
+  Netflix:'Suscripciones','VPS Hetzner':'Suscripciones','Droguería Cruz Verde':'Salud',Gym:'Salud','Arriendo octubre':'Vivienda','Hotel Chicago':'Vivienda',Marshalls:'Compras',Amazon:'Compras','Haircut':'Salud',Cine:'Ocio',Cerveza:'Ocio',
+  'Sushi con amigos':'Restaurante','Peaje':'Transporte','Datos celular':'Servicios','Agua servicio público':'Servicios'};
+ Object.keys(cases).forEach(k=>assert.equal(ctx.detectarCat(k),cases[k],k+' -> '+ctx.detectarCat(k)));
+ assert.equal(ctx.detectarCat('Subway'),'Restaurante');
+ ctx.D.expenses=[{id:'1',desc:'Subway',category:'Transporte',amount:3,currency:'USD',date:'2026-10-01'},{id:'2',desc:'Subway',category:'Transporte',amount:3,currency:'USD',date:'2026-10-02'},{id:'3',desc:'Subway',category:'Restaurante',amount:9,currency:'USD',date:'2026-10-03'}];
+ assert.equal(ctx.detectarCat('subway'),'Transporte');                                   // lo que más usas tú
+ assert.equal(ctx.detectarCat('Subway Times Square'),'Transporte');                      // coincidencia parcial con tu historial
+ ctx.D.expenses=[{id:'4',desc:'Tony',category:'Otros',amount:5,currency:'USD',date:'2026-10-01'}];
+ assert.equal(ctx.detectarCat('Tony'),'Otros');assert.equal(ctx.detectarCat('Tienda de Tony'),'Otros');   /* el historial parcial (tony) manda sobre la regla (tienda) */
+ ctx.D.expenses=[];assert.equal(ctx.detectarCat('Tienda de Tony'),'Mercado');
+});
+
+test('pay schedules: quincena on 15 and 30 (clamped in short months), monthly, weekly, start date and last-day edge cases',()=>{
+ const q={id:'q',freq:'quincenal',days:[15,30],start:'2026-01-01'};
+ assert.deepEqual(F.payDates(q,'2026-02-01','2026-03-31'),['2026-02-15','2026-02-28','2026-03-15','2026-03-30']);
+ assert.deepEqual(F.payDates(q,'2026-10-13','2026-10-31'),['2026-10-15','2026-10-30']);
+ assert.deepEqual(F.payDates({...q,start:'2026-10-16'},'2026-10-01','2026-10-31'),['2026-10-30']);
+ assert.deepEqual(F.payDates({id:'m',freq:'mensual',day:31,start:'2026-01-01'},'2026-01-01','2026-04-30'),['2026-01-31','2026-02-28','2026-03-31','2026-04-30']);
+ assert.deepEqual(F.payDates({id:'s',freq:'semanal',weekday:5,start:'2026-10-01'},'2026-10-01','2026-10-31'),['2026-10-02','2026-10-09','2026-10-16','2026-10-23','2026-10-30']);
+ assert.deepEqual(F.payDates({id:'x',freq:'quincenal',start:'2026-12-20'},'2026-12-01','2027-01-31'),['2026-12-30','2027-01-15','2027-01-30']);
+ assert.deepEqual(F.payDates(q,'2026-10-20','2026-10-10'),[]);
+});
+test('pending income: confirm once, skip, next payment, and the Resumen card',()=>{
+ const {ctx,el}=app();ctx.today=()=>'2026-10-31';
+ ctx.D.recurring.push({id:'r1',kind:'sueldo',name:'Quincena',amount:1800000,currency:'COP',freq:'quincenal',days:[15,30],start:'2026-10-01',skipped:[]});
+ let p=F.pendingIncome(ctx.D,'2026-10-31');assert.deepEqual(p.map(x=>x.date),['2026-10-15','2026-10-30']);
+ assert(ctx.ingresosCard().includes('¿Ya te pagaron?'));
+ ctx.confirmarPago('r1','2026-10-15');ctx.confirmarPago('r1','2026-10-15');
+ assert.equal(ctx.D.income.filter(i=>i.recurringId==='r1').length,1);const i0=ctx.D.income[0];assert.equal(i0.amount,1800000);assert.equal(i0.currency,'COP');assert.equal(i0.date,'2026-10-15');assert.equal(i0.incomeKind,'salary');assert.equal(F.area(i0),'Personal');
+ ctx.omitirPago('r1','2026-10-30');assert.equal(F.pendingIncome(ctx.D,'2026-10-31').length,0);
+ assert(ctx.ingresosCard().includes('Próximo pago')&&ctx.ingresosCard().includes('Quincena'));
+ assert.equal(ctx.monthData('2026-10').inc,1800000/ctx.fx());
+ ctx.D.recurring=[];assert.equal(ctx.ingresosCard(),'');
+});
+test('work module: mode is derived from data, hours/turn/tips UI only when they apply, quincena users see no tips',()=>{
+ const {ctx,el}=app();
+ assert.equal(F.workMode({settings:{}}),'ninguno');assert.equal(F.workMode({settings:{rate:17},cafe_hours:[]}),'horas');assert.equal(F.workMode({settings:{work:{mode:'fijo'},rate:17}}),'fijo');
+ assert.equal(F.workTips({settings:{},cafe_hours:[],income:[{source:'Propinas'}]}),true);assert.equal(F.workTips({settings:{work:{tips:false}},cafe_hours:[{}],income:[]}),false);
+ ctx.D.settings.rate=0;ctx.D.cafe_hours=[];ctx.D.income=[];
+ ctx.openAdd('gasto');assert(!el('sh-b').innerHTML.includes('Turno'));
+ ctx.setWorkMode('horas');ctx.openAdd('gasto');assert(el('sh-b').innerHTML.includes('Turno'));
+ ctx.openAdd('turno');assert(!el('sh-b').innerHTML.includes('Propinas'));ctx.toggleTips();ctx.openAdd('turno');assert(el('sh-b').innerHTML.includes('Propinas'));
+ ctx.go('mas');assert(el('s-mas').innerHTML.includes('Horas de trabajo'));ctx.setWorkMode('fijo');ctx.go('mas');assert(!el('s-mas').innerHTML.includes('Horas de trabajo'));
+ ctx.go('ajustes');assert(el('s-ajustes').innerHTML.includes('¿Cómo te pagan?'));ctx.saveSettings();           // sin campo de tarifa: no truena
+});
+test('hourly pay in pesos converts to dollars everywhere',()=>{
+ const d=empty();d.settings.rate=15000;d.settings.rateCurrency='COP';d.settings.fx=3000;d.cafe_hours=[{id:'h',date:'2026-09-07',hours:6}];
+ const w=F.weekly(d,'2026-09-07');assert.equal(w.received,30);assert.equal(w.salary,30);assert.equal(F.incomes(d)[0].currency,'COP');
+});
+test('recurring income sheet validates and saves each frequency',()=>{
+ const {ctx,el}=app();ctx.today=()=>'2026-10-13';
+ ctx.sheetFuente(null,'sueldo');el('f-srcname').value='Quincena';el('f-amount').value='1.800.000';ctx._cur='COP';el('f-srcd1').value='15';el('f-srcd2').value='30';ctx.saveFuente(null);
+ assert.equal(ctx.D.recurring.length,1);const r=ctx.D.recurring[0];assert.equal(r.freq,'quincenal');assert.equal(JSON.stringify(r.days),'[15,30]');assert.equal(r.amount,1800000);assert.equal(r.currency,'COP');assert.equal(r.kind,'sueldo');
+ ctx.sheetFuente(null,'extra');ctx.srcFreq('mensual');el('f-srcname').value='Arriendo local';el('f-amount').value='500000';ctx._cur='COP';el('f-srcday').value='5';ctx.saveFuente(null);assert.equal(ctx.D.recurring[1].day,5);assert.equal(ctx.D.recurring[1].kind,'extra');
+ ctx.sheetFuente(null,'extra');ctx.srcFreq('semanal');ctx.srcWeekday(3);el('f-srcname').value='Clases';el('f-amount').value='40';ctx._cur='USD';ctx.saveFuente(null);assert.equal(ctx.D.recurring[2].weekday,3);
+ ctx.sheetFuente(null,'extra');el('f-srcname').value='';ctx.saveFuente(null);assert.equal(ctx.D.recurring.length,3);
+ ctx.sheetFuente(null,'sueldo');ctx.srcFreq('quincenal');el('f-srcname').value='X';el('f-amount').value='100';el('f-srcd1').value='40';el('f-srcd2').value='30';ctx.saveFuente(null);assert.equal(ctx.D.recurring.length,3);
+ let done=0;ctx.sheetFuente(null,'sueldo',()=>{done++;});ctx.srcFreq('mensual');el('f-srcname').value='Sueldo';el('f-amount').value='3000000';ctx._cur='COP';el('f-srcday').value='30';ctx.saveFuente(null);assert.equal(done,1);
+ ctx.go('ajustes');assert(ctx.D.recurring.every(x=>el('s-ajustes').innerHTML.includes(x.name)));
+ ctx.delFuente(ctx.D.recurring[0].id);assert.equal(ctx.D.recurring.length,3);
+});
+
+test('projects: legacy Saava/USPORTS migrate to projects, new users have none, and users can add/rename/delete their own',()=>{
+ const {ctx,el}=app();
+ // usuario nuevo: ni Saava, ni USPORTS, ni bot, ni categorías de negocio
+ let fresh=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));assert.equal(fresh.projects.length,0);assert.equal(F.areas.join('|'),'Personal|Inversiones|Carro|Viajes|Extraordinarios');
+ ctx.D=fresh;ctx.go('resumen');assert(!el('s-resumen').innerHTML.includes('Saava'));ctx.go('mas');assert(!el('s-mas').innerHTML.includes('Saava')&&!el('s-mas').innerHTML.includes('Bot'));assert(el('s-mas').innerHTML.includes('Agregar proyecto'));
+ assert(!Object.keys(ctx.CATS).some(k=>/Saava|USPORTS|Sequo|Ninas/.test(k)));
+ // tus datos: se migran solos
+ const mine={...JSON.parse(JSON.stringify(ctx.SEED)),income:[{id:'i',date:'2026-09-02',source:'Pago',amount:250,currency:'USD',venture:'Saava'}],expenses:[{id:'e',date:'2026-09-03',desc:'Costo',amount:50,currency:'USD',category:'Saava'},{id:'u',date:'2026-09-04',desc:'Dominio',amount:20,currency:'USD',category:'USPORTS'},{id:'n',date:'2026-09-05',desc:'Abogado',amount:100,currency:'USD',category:'Ninas'}]};
+ ctx.D=ctx.normalize(mine);ctx.syncCats();
+ assert.equal(JSON.stringify(ctx.D.projects.map(p=>p.name)),'["Saava","USPORTS"]');assert(F.areas.includes('Saava')&&F.areas.includes('USPORTS'));
+ assert.equal(F.area(ctx.D.expenses[0]),'Saava');assert.equal(F.area(ctx.D.income[0]),'Saava');assert.equal(F.area(ctx.D.expenses[2]),'Inversiones');   // Ninas sigue como inversión
+ assert(ctx.CATS.Saava&&ctx.CATS.Ninas);assert.equal(ctx.saldoNegocio('Saava'),200);
+ ctx.curMonth='2026-09';ctx.go('resumen');assert(el('s-resumen').innerHTML.includes('Saava')&&el('s-resumen').innerHTML.includes('USPORTS'));
+ ctx.verProyecto(ctx.D.projects[0].id);assert(el('s-proyecto').innerHTML.includes('Saava'));assert(el('s-proyecto').innerHTML.includes('Editar proyecto'));
+ // agregar uno propio, usarlo en un ingreso y en un gasto
+ ctx.sheetProyecto();el('f-pjname').value='Mi tienda';el('f-pjemoji').value='🛍️';ctx.saveProyecto(null);
+ assert.equal(ctx.D.projects.length,3);assert(F.areas.includes('Mi tienda'));assert(ctx.CATS['Mi tienda']);assert(ctx.ventureToggle('').includes('Mi tienda'));
+ ctx.D.expenses.push({id:'x',date:'2026-09-06',desc:'Inventario',amount:30,currency:'USD',category:'Mi tienda'});ctx.D.income.push({id:'y',date:'2026-09-06',source:'Venta',amount:90,currency:'USD',venture:'Mi tienda'});
+ assert.equal(ctx.saldoNegocio('Mi tienda'),60);assert.equal(F.area(ctx.D.income[1]),'Mi tienda');
+ // nombres inválidos
+ ctx.sheetProyecto();el('f-pjname').value='personal';ctx.saveProyecto(null);assert.equal(ctx.D.projects.length,3);
+ ctx.sheetProyecto();el('f-pjname').value='Restaurante';ctx.saveProyecto(null);assert.equal(ctx.D.projects.length,3);
+ ctx.sheetProyecto();el('f-pjname').value='mi tienda';ctx.saveProyecto(null);assert.equal(ctx.D.projects.length,3);
+ // renombrar arrastra movimientos y presupuesto
+ const id=ctx.D.projects[2].id;ctx.D.settings.budgets['Mi tienda']=500;ctx.sheetProyecto(id);el('f-pjname').value='Tienda Sol';ctx.saveProyecto(id);
+ assert.equal(ctx.D.expenses.find(e=>e.id==='x').category,'Tienda Sol');assert.equal(ctx.D.income.find(i=>i.id==='y').venture,'Tienda Sol');assert.equal(ctx.D.settings.budgets['Tienda Sol'],500);assert.equal(ctx.D.settings.budgets['Mi tienda'],undefined);assert.equal(ctx.saldoNegocio('Tienda Sol'),60);
+ // eliminar: conserva movimientos
+ ctx.delProyecto(id);assert.equal(ctx.D.projects.length,2);assert.equal(ctx.D.expenses.some(e=>e.id==='x'),true);assert(!F.areas.includes('Tienda Sol'));assert.equal(F.area(ctx.D.expenses.find(e=>e.id==='x')),'Personal');
+});
+test('bot module is optional and the add-income form only offers real projects',()=>{
+ const {ctx,el}=app();
+ assert.equal(ctx.solanaOn(),false);ctx.D.solana.push({id:'s',date:'2026-09-01',balance:100,currency:'USD'});assert.equal(ctx.solanaOn(),true);ctx.toggleSolana();assert.equal(ctx.solanaOn(),false);
+ ctx.go('mas');assert(!el('s-mas').innerHTML.includes('Bot de trading'));ctx.toggleSolana();ctx.go('mas');assert(el('s-mas').innerHTML.includes('Bot de trading'));
+ assert.equal(ctx.ventureToggle(''),'');
+});
+
+test('setup wizard adapts to the person: pesos + quincena + extra income + budget + goal + account + PIN',()=>{
+ const {ctx,el}=app();ctx.today=()=>'2026-10-13';
+ ctx.D=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));
+ ctx.wizardStart();assert(el('sh-b').innerHTML.includes('¿Cómo te llamas?'));
+ el('wz-nombre').value='Sofía';ctx.wzMoneda('COP');ctx.wzNext();
+ assert.equal(ctx.sGet(ctx.NAME_KEY),'Sofía');assert.equal(ctx.D.settings.mainCurrency,'COP');assert.equal(ctx.monedaInicial(),'COP');
+ assert(el('sh-t').textContent.includes('¿Cómo te pagan?'));
+ ctx.wzPago('fijo');ctx.wzNext();                                         // abre el formulario de sueldo y espera
+ assert.equal(ctx.D.settings.work.mode,'fijo');assert(el('sh-t').textContent.includes('sueldo')||el('sh-b').innerHTML.includes('¿Cada cuánto te pagan?'));
+ el('f-srcname').value='Quincena';el('f-amount').value='1.800.000';ctx._cur='COP';el('f-srcd1').value='15';el('f-srcd2').value='30';ctx.saveFuente(null);
+ assert.equal(ctx.D.recurring.length,1);assert.equal(ctx.D.recurring[0].currency,'COP');assert(el('sh-t').textContent.includes('Ingresos extra'));          // el asistente continúa solo
+ ctx.wzExtra();el('f-srcname').value='Arriendo';el('f-amount').value='400000';ctx._cur='COP';ctx.srcFreq('mensual');el('f-srcday').value='5';ctx.saveFuente(null);
+ assert.equal(ctx.D.recurring.length,2);assert(el('sh-b').innerHTML.includes('Ya agregaste 1'));ctx.wzNext();
+ assert(el('sh-t').textContent.includes('¿Tienes gastos fijos?'));assert(el('sh-b').innerHTML.includes('No, por ahora no'));
+ ctx.wzFijos('si');assert(el('sh-b').innerHTML.includes('Arriendo')&&el('sh-b').innerHTML.includes('Suscripciones')&&el('sh-b').innerHTML.includes('Gimnasio'));
+ ctx.wzFijosToggle('arriendo');ctx.wzFijosToggle('subs');ctx.wzNext();                                  // abre el arriendo
+ assert(el('sh-t').textContent.includes('Nuevo gasto fijo'));el('f-srcname').value='Arriendo';el('f-amount').value='900000';ctx._cur='COP';el('f-srcday').value='5';ctx.saveBill(null);
+ assert.equal(ctx.D.bills.length,1);assert.equal(ctx.D.bills[0].category,'Vivienda');
+ assert(el('sh-t').textContent.includes('suscripción'));                                                // sigue con la suscripción
+ el('f-subname').value='Claude Pro';el('f-amount').value='20';ctx._cur='USD';el('f-subfrom').value='2026-10-01';ctx.guardarSub(null);
+ assert.equal(ctx.D.subscriptions.length,1);assert(el('sh-t').textContent.includes('Tu presupuesto'));
+ assert(el('sh-t').textContent.includes('Tu presupuesto'));ctx.wzPer('mes');el('f-amount').value='2.000.000';ctx.wzNext();
+ assert.equal(ctx.D.settings.weeklyBudgetCOP,Math.round(2000000*12/52));assert(Math.abs(ctx.D.settings.weekly-ctx.D.settings.weeklyBudgetCOP/ctx.fx())<0.01);
+ el('wz-mname').value='Viaje a Cartagena';el('f-amount').value='3000000';el('wz-mdate').value='2027-01-10';ctx.wzNext();
+ assert.equal(ctx.D.goals.length,1);assert.equal(ctx.D.goals[0].target,3000000);assert.equal(ctx.D.goals[0].currency,'COP');assert.equal(ctx.D.goals[0].deadline,'2027-01-10');
+ el('wz-aname').value='Nequi';el('f-amount').value='350000';ctx.wzNext();
+ assert.equal(ctx.D.assets.length,1);assert.equal(ctx.D.assets[0].type,'Liquidez');assert.equal(ctx.D.assets[0].currency,'COP');
+ el('wz-pin').value='12';ctx.wzNext();assert(el('sh-t').textContent.includes('Protege tu app'));          // PIN inválido: no avanza
+ el('wz-pin').value='4321';ctx.wzNext();assert.equal(ctx.sGet(ctx.PIN_KEY),'4321');
+ assert(el('sh-t').textContent.includes('Listo'));assert(el('sh-b').innerHTML.includes('Presupuesto')&&el('sh-b').innerHTML.includes('Meta de ahorro')&&el('sh-b').innerHTML.includes('Ingresos recurrentes'));
+ ctx.wzNext();assert.equal(ctx.screen,'resumen');
+});
+test('setup wizard: by-the-hour pay in pesos with tips, skipping everything works, back/skip navigation',()=>{
+ const {ctx,el}=app();
+ ctx.D=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));
+ ctx.wizardStart();ctx.wzNext();ctx.wzPago('horas');el('wz-rate').value='';ctx.wzNext();assert(el('sh-t').textContent.includes('¿Cómo te pagan?'));      // falta la tarifa
+ el('wz-rate').value='9.500';ctx.wzRateCur('COP');ctx.wzTips();el('wz-rate').value='9.500';ctx.wzNext();
+ assert.equal(ctx.D.settings.rate,9500);assert.equal(ctx.D.settings.rateCurrency,'COP');assert.equal(ctx.D.settings.work.mode,'horas');assert.equal(ctx.D.settings.work.tips,true);
+ ctx.wzSkip();ctx.wzSkip();ctx.wzSkip();ctx.wzSkip();ctx.wzBack();ctx.wzBack();assert(el('sh-t').textContent.includes('Tu presupuesto')||el('sh-t').textContent.includes('Una meta'));
+ const idx=ctx._wz.i;ctx.wzSkip();assert.equal(ctx._wz.i,idx+1);
+ assert.equal(ctx.D.goals.length,0);assert.equal(ctx.D.assets.length,0);assert.equal(ctx.D.recurring.length,0);
+});
+test('first steps card guides new users, counts progress, hides for people with history or on demand',()=>{
+ const {ctx,el}=app();
+ ctx.D=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));
+ let h=ctx.setupCard();assert(h.includes('Primeros pasos')&&h.includes('0 de 11'));assert(h.includes('Cómo te pagan'));
+ ctx.D.expenses.push({id:'e',date:'2026-10-13',desc:'Café',amount:3,currency:'USD',category:'Restaurante'});ctx.D.goals.push({id:'g',name:'Meta',target:100,currency:'USD',log:[]});
+ h=ctx.setupCard();assert(h.includes('2 de 11'));
+ ctx.D.settings.weekly=100;ctx.D.assets.push({id:'a',name:'Banco',type:'Liquidez',value:5,currency:'USD'},{id:'c',name:'Jetta',type:'Vehículo',value:6000,currency:'USD'});h=ctx.setupCard();assert(h.includes('5 de 11'));
+ ctx.ocultarGuia();assert.equal(ctx.setupCard(),'');
+ const old=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));old.expenses=Array.from({length:25},(_,i)=>({id:'x'+i,date:'2026-10-01',desc:'d',amount:1,currency:'USD',category:'Otros'}));ctx.D=old;assert.equal(ctx.setupCard(),'');
+ ctx.D=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));ctx.go('resumen');assert(el('s-resumen').innerHTML.includes('Primeros pasos'));
+ ctx.sheetPresupuesto();ctx.ppPer('semana');el('f-amount').value='80';ctx._cur='USD';ctx.guardarPresupuesto();assert.equal(ctx.D.settings.weekly,80);assert.equal(ctx.D.settings.weeklyBudgetCOP,undefined);
+ ctx.go('ayuda');assert(el('s-ayuda').innerHTML.includes('Cómo usar la app')&&el('s-ayuda').innerHTML.includes('Split y cobros')&&el('s-ayuda').innerHTML.includes('Cómo te pagan'));
+});
+test('profile: name and PIN are per device; devices with data keep the old PIN; new devices start open',()=>{
+ const {ctx,el}=app();
+ [ctx.KEY,ctx.OLDKEY,ctx.PIN_KEY,ctx.NAME_KEY].forEach(k=>ctx.localStorage.removeItem(k));
+ assert.equal(ctx.pinVigente(),'');assert.equal(ctx.nombreVigente(),'');                          // dispositivo nuevo
+ ctx.localStorage.setItem(ctx.KEY,'{"expenses":[]}');
+ assert.equal(ctx.pinVigente(),'2002');assert.equal(ctx.nombreVigente(),'Andrés Ortiz');            // dispositivo con datos de antes
+ el('set-nombre').value='Sofía';el('set-pin').value='9';ctx.guardarPerfil();assert.equal(ctx.pinVigente(),'2002');   // clave inválida: no cambia
+ el('set-pin').value='7777';ctx.guardarPerfil();assert.equal(ctx.pinVigente(),'7777');assert.equal(ctx.nombreVigente(),'Sofía');
+ let entered=0;ctx.entrar=()=>{entered++;};el('lock-in').value='2002';ctx.tryLogin();assert.equal(entered,0);el('lock-in').value='7777';ctx.tryLogin();assert.equal(entered,1);
+ el('set-nombre').value='Sofía';el('set-pin').value='';ctx.guardarPerfil();assert.equal(ctx.pinVigente(),'');
+ ctx.go('ajustes');assert(el('s-ajustes').innerHTML.includes('Tu perfil'));
+});
+
+test('TRM: uses the rate in force today, not the one published a day ahead',()=>{
+ const rows=[{valor:'3181.74',vigenciadesde:'2026-10-14T00:00:00.000'},{valor:'3194.44',vigenciadesde:'2026-10-10T00:00:00.000'},{valor:'3218.75',vigenciadesde:'2026-10-09T00:00:00.000'}];
+ let d={settings:{fx:4000},prices:[]};assert.equal(PublicSync.applyTrm(d,rows,'2026-10-13'),true);assert.equal(d.settings.fx,3194.44);
+ d={settings:{fx:4000},prices:[]};assert.equal(PublicSync.applyTrm(d,rows,'2026-10-14'),true);assert.equal(d.settings.fx,3181.74);
+ d={settings:{fx:4000},prices:[]};assert.equal(PublicSync.applyTrm(d,rows,'2026-10-08'),false);assert.equal(d.settings.fx,4000);
+ d={settings:{fx:4000},prices:[]};assert.equal(PublicSync.applyTrm(d,[{valor:'999999',vigenciadesde:'2026-10-10'}],'2026-10-13'),false);   // fuera de rango: se ignora
+});
+
+test('fixed bills: monthly/biweekly/weekly schedule, confirm once with spread, skip, next bill, totals',()=>{
+ const {ctx,el}=app();ctx.today=()=>'2026-10-13';
+ ctx.D.bills=[];
+ ctx.sheetBill(null,0);assert.equal(ctx._cat,'Vivienda');assert(el('sh-b').innerHTML.includes('value="Arriendo"'));
+ el('f-srcname').value='Arriendo';el('f-amount').value='900.000';ctx._cur='COP';el('f-srcday').value='5';el('f-srcstart').value='2026-09-01';ctx.saveBill(null);
+ ctx.sheetBill(null,2);el('f-srcname').value='Internet';el('f-amount').value='30';ctx._cur='USD';el('f-srcday').value='20';el('f-srcstart').value='2026-10-01';ctx.saveBill(null);
+ ctx.sheetBill(null,3);ctx.srcFreq('quincenal');el('f-srcname').value='Cuota del carro';el('f-amount').value='150';ctx._cur='USD';el('f-srcd1').value='1';el('f-srcd2').value='16';el('f-srcstart').value='2026-10-01';ctx.saveBill(null);
+ assert.equal(ctx.D.bills.length,3);assert.equal(ctx.D.bills[2].category,'Transporte');
+ const p=F.pendingBills(ctx.D,'2026-10-13').map(x=>x.bill.name+x.date);
+ assert(p.includes('Arriendo2026-10-05')&&p.includes('Cuota del carro2026-10-01')&&!p.some(x=>x.includes('Internet')));      // internet toca el 20: aún no
+ assert(ctx.fijosCard().includes('¿Ya pagaste?'));
+ ctx.confirmarBill(ctx.D.bills[0].id,'2026-10-05');ctx.confirmarBill(ctx.D.bills[0].id,'2026-10-05');
+ const ex=ctx.D.expenses.filter(e=>e.fixedId===ctx.D.bills[0].id);assert.equal(ex.length,1);assert.equal(ex[0].amount,900000);assert.equal(ex[0].currency,'COP');assert.equal(ex[0].category,'Vivienda');assert.equal(ex[0].spread,4);assert.equal(ex[0].date,'2026-10-05');
+ ctx.omitirBill(ctx.D.bills[2].id,'2026-10-01');assert(!F.pendingBills(ctx.D,'2026-10-13').some(x=>x.date==='2026-10-01'&&x.bill.name==='Cuota del carro'));
+ const nb=F.nextBill(ctx.D,'2026-10-13');assert.equal(nb.bill.name,'Cuota del carro');assert.equal(nb.date,'2026-10-16');
+ assert.equal(Math.round(F.billMonthly(ctx.D.bills[2])),300);assert.equal(F.billMonthly({amount:10,freq:'semanal'}).toFixed(2),(10*52/12).toFixed(2));
+ ctx.go('fijos');const h=el('s-fijos').innerHTML;assert(h.includes('Arriendo')&&h.includes('Gastos fijos al mes')&&h.includes('Suscripción'));
+ ctx.go('mas');assert(el('s-mas').innerHTML.includes('Gastos fijos'));
+ ctx.delBill(ctx.D.bills[1].id);assert.equal(ctx.D.bills.length,2);
+});
+test('fixed bills reduce the monthly budget only when their category has a cap, and never twice',()=>{
+ const {ctx,el}=app();ctx.today=()=>'2026-10-13';
+ ctx.D.settings.budgets={Vivienda:1000000,Servicios:0};ctx.D.settings.fx=3000;
+ ctx.D.bills=[{id:'b1',name:'Arriendo',category:'Vivienda',amount:900000,currency:'COP',freq:'mensual',day:25,start:'2026-10-01',skipped:[]},{id:'b2',name:'Internet',category:'Servicios',amount:90000,currency:'COP',freq:'mensual',day:20,start:'2026-10-01',skipped:[]}];
+ assert.equal(F.billsPendingMonth(ctx.D,'2026-10',ctx.D.settings.budgets),300);                 // solo Vivienda tiene tope: 900.000 COP = $300
+ ctx.go('presupuesto');assert(el('s-presupuesto').innerHTML.includes('gastos fijos que aún no pagas'));
+ ctx.today=()=>'2026-10-25';ctx.confirmarBill('b1','2026-10-25');assert.equal(F.billsPendingMonth(ctx.D,'2026-10',ctx.D.settings.budgets),0);   // ya pagado: lo cuenta el gasto, no el pendiente
+ ctx.go('presupuesto');assert(!el('s-presupuesto').innerHTML.includes('gastos fijos que aún no pagas'));
+ ctx.omitirBill('b1','2026-11-25');assert.equal(F.billsPendingMonth(ctx.D,'2026-11',ctx.D.settings.budgets),0);
+});
+
+test('fixed bills are optional in the wizard: answering no skips them and nothing is created',()=>{
+ const {ctx,el}=app();
+ ctx.D=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));
+ ctx.wizardStart();ctx.wzGo(3);assert(el('sh-t').textContent.includes('¿Tienes gastos fijos?'));
+ ctx.wzFijos('no');assert(el('sh-b').innerHTML.includes('sin gastos fijos por ahora'));ctx.wzNext();assert(el('sh-t').textContent.includes('Tu presupuesto'));assert.equal(ctx.D.bills.length,0);assert.equal(ctx.D.subscriptions.length,0);
+ ctx.wzGo(3);ctx.wzFijos('si');ctx.wzNext();assert(el('sh-t').textContent.includes('Tu presupuesto'));assert.equal(ctx.D.bills.length,0);   // dijo sí pero no eligió ninguno
+ ctx.wzGo(3);ctx._wz.fijos=null;ctx.wzSkip();assert(el('sh-t').textContent.includes('Tu presupuesto'));
+});
+test('bill names are recognized: Tigo/Claro are services, Claude/Netflix are subscriptions, and subscriptions go to their own registry',()=>{
+ const {ctx,el}=app();ctx.today=()=>'2026-10-13';ctx.D.expenses=[];
+ ['Tigo','Claro','Movistar','Internet Claro','Luz','Arriendo','Gimnasio','Cuota del carro'].forEach((n,i)=>assert.equal(ctx.detectarCat(n),['Servicios','Servicios','Servicios','Servicios','Servicios','Vivienda','Salud','Transporte'][i],n));
+ ['Claude','Claude Pro','Netflix','Spotify','Anthropic','Disney+','Hetzner','ChatGPT'].forEach(n=>assert.equal(ctx.detectarCat(n),'Suscripciones',n));
+ ctx.sheetBill(null,7);el('f-srcname').value='Tigo';ctx.billAutoCat();assert.equal(ctx._cat,'Servicios');assert.equal(el('bill-hint').textContent,'');
+ el('f-amount').value='85.000';ctx._cur='COP';el('f-srcday').value='12';el('f-srcstart').value='2026-10-01';ctx.saveBill(null);
+ assert.equal(ctx.D.bills.length,1);assert.equal(ctx.D.bills[0].category,'Servicios');assert.equal(ctx.D.subscriptions.length,0);
+ ctx.sheetBill(null,7);el('f-srcname').value='Claude Pro';ctx.billAutoCat();assert.equal(ctx._cat,'Suscripciones');assert(el('bill-hint').textContent.includes('Suscripciones'));
+ el('f-amount').value='20';ctx._cur='USD';el('f-srcday').value='11';el('f-srcstart').value='2026-10-01';ctx.saveBill(null);
+ assert.equal(ctx.D.bills.length,1);assert.equal(ctx.D.subscriptions.length,1);const s=ctx.D.subscriptions[0];assert.equal(s.name,'Claude Pro');assert.equal(s.amount,20);assert.equal(s.currency,'USD');assert.equal(s.activeFrom,'2026-10-01');assert.equal(s.activeUntil,null);
+ assert.equal(ctx.totalSuscripcionesMes('2026-10'),20);                                                     // ya cuenta en el presupuesto de suscripciones
+ // si el usuario elige la categoría a mano, el nombre ya no la cambia
+ ctx.sheetBill(null,7);ctx.pickCat({dataset:{cat:'Otros'}});el('f-srcname').value='Netflix';ctx.billAutoCat();assert.equal(ctx._cat,'Otros');
+ // una cuota quincenal de suscripción se guarda como su equivalente mensual
+ ctx.sheetBill(null,7);el('f-srcname').value='Opus Clip';ctx.billAutoCat();ctx.srcFreq('quincenal');el('f-amount').value='10';ctx._cur='USD';el('f-srcd1').value='1';el('f-srcd2').value='16';el('f-srcstart').value='2026-10-01';ctx.saveBill(null);
+ assert.equal(ctx.D.subscriptions.find(x=>x.name==='Opus Clip').amount,20);
 });

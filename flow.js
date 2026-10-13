@@ -100,7 +100,7 @@ function rSemanal(){
     var pct=sp.received?m.value/sp.received*100:0;
     return '<div class="row"><div class="row-m"><div class="row-t">'+esc(m.name)+'</div><div class="track" style="margin:6px 0 0"><div class="fill" style="width:'+pct.toFixed(1)+'%;background:var(--grn)"></div></div></div><div class="row-v num g">+'+money(m.value)+'<span class="sub">'+Math.round(pct)+'%</span></div></div>';}).join('')+'</div></div>'
    :'<div class="empty"><div class="e">💵</div><div class="t">Sin ingresos en este periodo</div></div>')
-  +'<div class="dash-actions"><button onclick="editHora()">+ Turno</button><button onclick="openAdd(\'ingreso\')">+ Ingreso</button><button onclick="openAdd(\'gasto\')">+ Gasto</button></div>'
+  +'<div class="dash-actions">'+(workHoras()?'<button onclick="editHora()">+ Turno</button>':'')+'<button onclick="openAdd(\'ingreso\')">+ Ingreso</button><button onclick="openAdd(\'gasto\')">+ Gasto</button></div>'
   +'<div class="sec">Historial · '+(flowMode==='mes'?'meses':'semanas')+'</div><div class="card" style="padding:6px 14px"><div class="list">'+flowHistory()+'</div></div>'
   +'<div class="note" style="padding-top:12px">Lunes a domingo, en USD. Ingresos incluyen horas × tarifa, propinas y otros cobros (las propinas ligadas se cuentan una vez). Los gastos salen completos en su fecha de pago; si los repartiste en varias semanas, el presupuesto sí los reparte. Las partes de gastos compartidos se cuentan como tu gasto.</div>';
 }

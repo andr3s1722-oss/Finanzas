@@ -30,7 +30,7 @@ function rSplit(){
  var people=D.people.map(function(p){
   var b=bal[p.id]||{},hist=Split.involving(D,p.id).slice().sort(function(a,c){return c.date.localeCompare(a.date);});
   return '<details class="card sp-person"><summary><span class="sp-av">'+esc((p.name||'?').charAt(0).toUpperCase())+'</span><span class="row-m"><span class="row-t" style="display:block">'+esc(p.name)+'</span><span class="row-s" style="display:block">'+hist.length+' movimientos</span></span><span class="row-v" style="font-size:13px">'+spBalText(b)+'</span></summary>'
-   +'<div class="sp-body"><div class="dash-actions" style="margin-top:0"><button onclick="sheetSaldo(\''+p.id+'\')">Saldar cuentas</button><button onclick="sheetPersona(\''+p.id+'\')">Editar</button></div>'
+   +'<div class="sp-body"><div class="dash-actions" style="margin-top:0"><button onclick="sheetSaldo(\''+p.id+'\')">Saldar cuentas</button><button onclick="sheetPersona(\''+p.id+'\')">Editar</button>'+(Object.keys(b).some(function(c){return Math.abs(b[c])>=0.005;})?'<button onclick="sheetCobrar(\''+p.id+'\')">'+(Object.keys(b).some(function(c){return b[c]>=0.005;})?'Cobrar':'Enviar resumen')+'</button>':'')+'</div>'
    +(hist.length?'<div class="list">'+hist.map(function(e){return spEntryRow(e);}).join('')+'</div>':'<div class="note">Aún no hay movimientos.</div>')+'</div></details>';
  }).join('');
  var recent=D.splits.slice().sort(function(a,c){return c.date.localeCompare(a.date);}).slice(0,8);
@@ -48,13 +48,17 @@ function rSplit(){
 /* personas */
 function sheetPersona(id,thenSplit){
  var p=id?spPerson(id):null;
- sheet(p?'Editar persona':'Nueva persona',fText('f-pname','Nombre',p?p.name:'','Andy, Sasha…'),
+ sheet(p?'Editar persona':'Nueva persona',fText('f-pname','Nombre',p?p.name:'','Andy, Sasha…')+fText('f-pmail','Correo (opcional, para cobrarle)',p?p.email:'','andy@correo.com','email')+fText('f-pphone','WhatsApp (opcional, con código de país)',p?p.phone:'','+57 300 000 0000','tel'),
   (p?'<button class="btn dg" onclick="delPersona(\''+id+'\')">Eliminar</button>':'')+'<button class="btn" onclick="savePersona('+(id?'\''+id+'\'':'null')+','+(thenSplit?'true':'false')+')">Guardar</button>');
 }
 function savePersona(id,thenSplit){
  var n=val('f-pname');if(!n)return toast('Falta el nombre');
  if(D.people.some(function(p){return p.id!==id&&p.name.toLowerCase()===n.toLowerCase();}))return toast('Ya existe '+n);
- if(id)spPerson(id).name=n;else{var np={id:uid(),name:n};D.people.push(np);}
+ var mail=val('f-pmail'),phone=val('f-pphone'),person=id?spPerson(id):{id:uid(),name:n};
+ person.name=n;
+ if(mail)person.email=mail;else delete person.email;
+ if(phone)person.phone=phone;else delete person.phone;
+ if(!id)D.people.push(person);
  save();closeSheet();if(thenSplit)sheetSplit();else{refresh();}toast('Guardado ✓');
 }
 function delPersona(id){
@@ -181,3 +185,55 @@ function saveSaldo(){
  save();closeSheet();_saldo=null;refresh();toast('Saldo registrado ✓');
 }
 TITLES.split='Split';SUBS.split=1;
+
+/* Cobrar: arma el mensaje y lo manda por correo, WhatsApp o el menú de compartir. No necesita que la otra persona use la app. */
+var _cob=null;
+function spPlain(a,c){a=Math.abs(a);return c==='COP'?'COP '+Math.round(a).toLocaleString('es-CO'):'$'+a.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+/* «Cómo pagarme»: Nequi, Llave y Zelle (los que tengas llenos). Con deuda en COP salen primero Nequi y Llave; en USD, Zelle. */
+function cobPayInfo(){
+ var pay=el('f-pay-nequi')?{nequi:val('f-pay-nequi'),llave:val('f-pay-llave'),zelle:val('f-pay-zelle')}:(D.settings.pay||{});
+ var st=Split.statement(D,_cob.id),usd=Object.keys(st.balance).some(function(c){return c==='USD'&&st.balance[c]>0.005;}),cop=Object.keys(st.balance).some(function(c){return c==='COP'&&st.balance[c]>0.005;});
+ var order=(usd&&!cop)?['zelle','nequi','llave']:['nequi','llave','zelle'],names={nequi:'Nequi',llave:'Llave',zelle:'Zelle'};
+ return order.filter(function(k){return pay[k];}).map(function(k){return names[k]+' '+pay[k];}).join(' · ');
+}
+function cobMessage(){
+ var p=spPerson(_cob.id);
+ return Split.statementText(D,_cob.id,{name:p.name,lang:_cob.lang,payInfo:cobPayInfo(),fmt:spPlain,
+  day:function(d){var x=d.split('-');return +x[2]+' '+MS[+x[1]-1].toLowerCase();}});
+}
+function sheetCobrar(id){
+ var p=spPerson(id);_cob={id:id,lang:'es'};
+ sheet('Cobrar a '+esc(p.name),
+  '<div class="seg mini"><button id="cob-es" class="on" onclick="cobLang(\'es\')">Español</button><button id="cob-en" onclick="cobLang(\'en\')">English</button></div>'
+  +'<div class="sec" style="margin-top:4px">Cómo pagarte</div>'
+  +fText('f-pay-nequi','Nequi (número)',(D.settings.pay||{}).nequi||'','300 123 4567',null,'inputmode="tel" oninput="cobRegen()"')
+  +fText('f-pay-llave','Llave (Bre-B)',(D.settings.pay||{}).llave||'','@tullave o tu correo',null,'oninput="cobRegen()"')
+  +fText('f-pay-zelle','Zelle (correo o teléfono)',(D.settings.pay||{}).zelle||'','tu@correo.com',null,'oninput="cobRegen()"')
+  +'<div class="f"><label for="f-cob-msg">Mensaje</label><textarea id="f-cob-msg" rows="9" style="width:100%;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:14px;line-height:1.5"></textarea></div>'
+  +'<div class="note">'+(p.email?'Se enviará a '+esc(p.email)+'. ':'Agrega su correo en Editar para que se llene solo. ')+'Puedes cambiar el texto antes de enviarlo. Este mensaje lleva los montos reales aunque tengas el ojito activado.</div>',
+  '<button class="btn gh" onclick="cobShare()">Compartir</button><button class="btn gh" onclick="cobWhats()">WhatsApp</button><button class="btn" onclick="cobMail()">Correo</button>',
+  function(){cobRegen();});
+}
+function cobRegen(){if(el('f-cob-msg'))el('f-cob-msg').value=cobMessage();}
+function cobLang(l){_cob.lang=l;el('cob-es').classList.toggle('on',l==='es');el('cob-en').classList.toggle('on',l==='en');cobRegen();}
+function cobRemember(){
+ if(!el('f-pay-nequi'))return;
+ var pay={nequi:val('f-pay-nequi'),llave:val('f-pay-llave'),zelle:val('f-pay-zelle')};
+ Object.keys(pay).forEach(function(k){if(!pay[k])delete pay[k];});
+ if(Object.keys(pay).length)D.settings.pay=pay;else delete D.settings.pay;
+ save();
+}
+function cobMail(){
+ var p=spPerson(_cob.id),es=_cob.lang==='es';cobRemember();
+ var subject=es?'Cuentas pendientes entre nosotros':'Our shared expenses';
+ window.location.href='mailto:'+encodeURIComponent(p.email||'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(el('f-cob-msg').value);
+}
+function cobWhats(){
+ var p=spPerson(_cob.id),digits=String(p.phone||'').replace(/\D/g,'');cobRemember();
+ window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(el('f-cob-msg').value),'_blank');
+}
+async function cobShare(){
+ var text=el('f-cob-msg').value;cobRemember();
+ try{if(navigator.share){await navigator.share({text:text});return;}}catch(e){if(e&&e.name==='AbortError')return;}
+ if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(text);toast('Mensaje copiado ✓');}else toast('No se pudo compartir');
+}
