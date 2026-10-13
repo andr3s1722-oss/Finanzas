@@ -17,9 +17,9 @@ test('deficit, zero income, negative initial cash and scheduled debt alerts',()=
 function app(){
  const store=new Map(),nodes=new Map(),el=id=>{if(!nodes.has(id))nodes.set(id,{style:{},classList:{add(){},remove(){},toggle(){}},value:'',innerHTML:'',focus(){},setAttribute(){},querySelectorAll(){return []}});return nodes.get(id);};
  const doc={getElementById:el,querySelectorAll(){return []},addEventListener(){},documentElement:{setAttribute(){}}};
- const ctx=vm.createContext({Finance:F,Split:S,Importer:I,Cloud:Cl,atob:globalThis.atob,URLSearchParams,location:{hash:'',origin:'https://x.test',pathname:'/Finanzas/',search:''},history:{replaceState(){}},document:doc,window:{scrollTo(){},addEventListener(){}},setTimeout(){},clearTimeout(){},console,sessionStorage:{getItem(){return null}},localStorage:{getItem(k){return store.has(k)?store.get(k):null},setItem(k,v){store.set(k,String(v))}},confirm(){return true}});
+ const ctx=vm.createContext({Finance:F,Split:S,Importer:I,Cloud:Cl,atob:globalThis.atob,btoa:globalThis.btoa,crypto:globalThis.crypto,URLSearchParams,location:{hostname:'andr3s1722-oss.github.io',hash:'',origin:'https://x.test',pathname:'/Finanzas/',search:''},history:{replaceState(){}},document:doc,window:{scrollTo(){},addEventListener(){}},setTimeout(){},clearTimeout(){},console,sessionStorage:{getItem(){return null}},localStorage:{getItem(k){return store.has(k)?store.get(k):null},setItem(k,v){store.set(k,String(v))},removeItem(k){store.delete(k)}},confirm(){return true}});
  const dir=path.join(__dirname,'..'),html=fs.readFileSync(path.join(dir,'index.html'),'utf8');
- for(const m of html.matchAll(/<script(?: src="([^"]+)")?>([\s\S]*?)<\/script>/g)){if(m[1]){if(/planning|flow|splitui|importui|metas|cloudui/.test(m[1]))vm.runInContext(fs.readFileSync(path.join(dir,m[1]),'utf8'),ctx);}else vm.runInContext(m[2],ctx);}
+ for(const m of html.matchAll(/<script(?: src="([^"]+)")?>([\s\S]*?)<\/script>/g)){if(m[1]){if(/planning|flow|splitui|importui|metas|cloudui|faceid/.test(m[1]))vm.runInContext(fs.readFileSync(path.join(dir,m[1]),'utf8'),ctx);}else vm.runInContext(m[2],ctx);}
  ctx.D=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));ctx.curMonth='2026-09';return {ctx,el};
 }
 test('legacy JSON roundtrip preserves custom fields, balances, IDs and references',()=>{const {ctx}=app();const fixture={...empty(),custom:{kept:true},investments:[],income:[{id:'tip',source:'Propinas',date:'2026-09-07',amount:40,currency:'USD',custom:'keep'}],expenses:[{id:'e',date:'2026-09-07',desc:'Groceries',category:'Mercado',amount:80,currency:'USD',spread:4}],cafe_hours:[{id:'h',date:'2026-09-07',hours:6,tipId:'tip'}],assets:[{id:'car',name:'Jetta',type:'Vehículo',value:6000,currency:'USD'}]};let normalized=ctx.normalize(structuredClone(fixture));let roundtrip=ctx.normalize(JSON.parse(JSON.stringify(normalized)));assert.equal(JSON.stringify(roundtrip),JSON.stringify(normalized));assert.equal(roundtrip.custom.kept,true);assert.equal(roundtrip.income[0].custom,'keep');assert.equal(roundtrip.cafe_hours[0].tipId,'tip');assert.equal(roundtrip.assets.length,1);});
@@ -236,4 +236,71 @@ test('cloud screen renders signed out and signed in, and every save pings the sy
  assert(el('s-nube').innerHTML.includes('yo@correo.com'));assert(el('s-nube').innerHTML.includes('Sincronizar ahora'));
  let pings=0;ctx.cloudTouch=()=>{pings++;};ctx.save();assert.equal(pings,1);
  ctx.go('mas');assert(el('s-mas').innerHTML.includes('Nube y dispositivos'));
+});
+
+test('Apple Pay inbox: lists pending payments, saves with category, never duplicates, discards, and clears the cloud rows',async()=>{
+ const {ctx,el}=app();
+ const calls=[];ctx.window.PublicSync={getSession:async()=>({access_token:'tok'})};
+ let rows=[{id:'a1',created_at:'2026-10-13T20:00:00Z',amount_raw:'$16.56',merchant:"Wendy's",currency:'USD',card:'AMEX'},
+  {id:'b2',created_at:'2026-10-13T21:00:00Z',amount_raw:'4,50',merchant:'',currency:'USD',card:''},
+  {id:'c3',created_at:'2026-10-13T22:00:00Z',amount_raw:'basura',merchant:'X',currency:'USD',card:''}];
+ ctx.cloudRequest=async(url,o={})=>{calls.push((o.method||'GET')+' '+url.split('/rest/v1/')[1]);
+  if((o.method||'GET')==='GET')return {ok:true,status:200,data:rows.map(r=>({...r})),text:''};
+  if(o.method==='DELETE'){const ids=decodeURIComponent(url.split('id=in.(')[1].slice(0,-1)).split(',');rows=rows.filter(r=>!ids.includes(r.id));return {ok:true,status:204,data:null,text:''};}
+  return {ok:true,status:200,data:'x'.repeat(64),text:''};};
+ await ctx.cloudInboxPull(true);assert.equal(ctx.inboxCount(),3);
+ assert(ctx.inboxBanner().includes('3 pagos por confirmar'));
+ ctx.go('inbox');assert(el('s-inbox').innerHTML.includes("Wendy&#39;s")||el('s-inbox').innerHTML.includes("Wendy's"));assert(el('s-inbox').innerHTML.includes('Restaurante'));
+ await ctx.cloudInboxAccept('a1');
+ const e=ctx.D.expenses.find(x=>x.fromInbox==='a1');assert.equal(e.amount,16.56);assert.equal(e.currency,'USD');assert.equal(e.category,'Restaurante');assert.equal(e.desc,"Wendy's");
+ assert(!rows.some(r=>r.id==='a1'));assert.equal(ctx.inboxCount(),2);
+ await ctx.cloudInboxAccept('c3');assert(!ctx.D.expenses.some(x=>x.fromInbox==='c3'));          // monto ilegible: no guarda nada
+ // si el borrado remoto falló antes, el siguiente pull no duplica y limpia
+ rows.push({id:'a1',created_at:'2026-10-13T20:00:00Z',amount_raw:'$16.56',merchant:"Wendy's",currency:'USD',card:'AMEX'});
+ await ctx.cloudInboxPull(true);assert.equal(ctx.D.expenses.filter(x=>x.fromInbox==='a1').length,1);assert(!rows.some(r=>r.id==='a1'));
+ await ctx.cloudInboxAcceptAll();assert.equal(ctx.D.expenses.filter(x=>x.fromInbox==='b2').length,1);assert.equal(ctx.D.expenses.find(x=>x.fromInbox==='b2').amount,4.5);assert.equal(ctx.D.expenses.find(x=>x.fromInbox==='b2').desc,'Apple Pay');
+ await ctx.cloudInboxDiscard('c3');assert.equal(rows.length,0);assert.equal(ctx.inboxBanner(),'');
+});
+test('Apple Pay setup card creates the key once and never persists it',async()=>{
+ const {ctx,el}=app();ctx.window.PublicSync={getSession:async()=>({access_token:'tok'})};
+ const tok='f'.repeat(64);ctx.cloudRequest=async(url)=>({ok:true,status:200,data:url.includes('create_capture_token')?tok:null,text:''});
+ ctx.publicSession={access_token:'x'};
+ assert(ctx.cloudApplePayCard().includes('Crear llave del atajo'));assert(!ctx.cloudApplePayCard().includes(tok));
+ await ctx.cloudMakeToken();assert.equal(ctx.cloudToken,tok);
+ const html=ctx.cloudApplePayCard();assert(html.includes('Copia tu llave ahora'));assert(html.includes('capture_expense'));assert(!html.includes(tok));
+ assert(!JSON.stringify(ctx.D).includes(tok));
+ ctx.go('mas');assert(el('s-mas').innerHTML.includes('Pagos por confirmar'));
+});
+
+test('Face ID: enabling stores only the credential id, unlocking asks for user verification, and failure falls back to the password',async()=>{
+ const {ctx,el}=app();
+ const calls=[];const rawId=new Uint8Array([1,2,3,250,251,252]).buffer;
+ ctx.window.PublicKeyCredential={};
+ ctx.navigator={credentials:{create:async o=>{calls.push(['create',o]);return {rawId};},get:async o=>{calls.push(['get',o]);return {ok:true};}}};
+ assert.equal(ctx.faceOn(),false);assert(ctx.faceCard().includes('Activar Face ID'));
+ await ctx.faceEnable();assert.equal(ctx.faceOn(),true);
+ const pk=calls[0][1].publicKey;assert.equal(pk.authenticatorSelection.authenticatorAttachment,'platform');assert.equal(pk.authenticatorSelection.userVerification,'required');assert.equal(pk.rp.id,'andr3s1722-oss.github.io');
+ assert(ctx.faceCard().includes('Desactivar'));assert(!JSON.stringify(ctx.D).includes('finanzas_faceid'));
+ let entered=0;ctx.entrar=()=>{entered++;};
+ assert.equal(await ctx.faceUnlock(),true);assert.equal(entered,1);
+ const g=calls.at(-1)[1].publicKey;assert.equal(g.userVerification,'required');assert.deepEqual([...g.allowCredentials[0].id],[1,2,3,250,251,252]);
+ ctx.navigator.credentials.get=async()=>{throw Object.assign(new Error('x'),{name:'NotAllowedError'});};
+ assert.equal(await ctx.faceUnlock(),false);assert.equal(entered,1);assert(el('lock-err').textContent.includes('clave'));
+ ctx.faceDisable();assert.equal(ctx.faceOn(),false);assert.equal(await ctx.faceUnlock(),false);
+});
+test('Face ID: relocks only when enabled, started and away for more than a minute',async()=>{
+ const {ctx,el}=app();
+ ctx.window.PublicKeyCredential={};ctx.navigator={credentials:{create:async()=>({rawId:new Uint8Array([9]).buffer}),get:async()=>null}};
+ ctx.window.__started=true;
+ ctx.faceVisibility(true,1000);assert.equal(ctx.faceVisibility(false,200000),false);          // sin Face ID: nunca
+ await ctx.faceEnable();
+ ctx.faceVisibility(true,1000);assert.equal(ctx.faceVisibility(false,30000),false);            // 29 s fuera
+ ctx.faceVisibility(true,1000);assert.equal(ctx.faceVisibility(false,90000),true);             // 89 s fuera
+ assert.equal(el('lock').style.display,'flex');
+ ctx.window.__started=false;ctx.faceVisibility(true,1000);assert.equal(ctx.faceVisibility(false,90000),false);
+});
+test('unlocking an already-started app only removes the lock; first unlock starts the app',()=>{
+ const {ctx,el}=app();let started=0;ctx.start=()=>{started++;};
+ ctx.window.__started=false;ctx.entrar();assert.equal(started,1);
+ ctx.window.__started=true;el('lock').style.display='flex';ctx.entrar();assert.equal(started,1);assert.equal(el('lock').style.display,'none');
 });

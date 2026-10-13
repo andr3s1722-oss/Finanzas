@@ -91,6 +91,7 @@ function rImportar(){
   +'<div id="imp-review" style="margin-top:14px"></div>'
   +(last?'<div class="dash-actions"><button onclick="impUndo()">Deshacer última importación ('+last+')</button></div>':'')
   +'<div class="sec">Apple Pay · captura automática</div><div class="card">'
+  +'<div class="warn" style="margin-bottom:10px"><b>Recomendado:</b> conecta la nube y el atajo envía cada pago directo a tus datos, sin Safari. Ve a <b>Más → Nube y dispositivos → Apple Pay</b>. Lo de abajo es la alternativa sin nube.</div>'
   +'<p class="note" style="padding-top:0">En <b>Atajos → Automatización → Transacción</b> (se activa al pagar con Apple Pay):</p>'
   +'<ol class="imp-steps"><li>Acción <b>Abrir URL</b>.</li><li>Escribe <code>'+esc(impSite())+'#add?monto=</code>, inserta la variable <b>Cantidad</b>, luego <code>&amp;desc=</code> y la variable <b>Comerciante</b>.</li><li>Elige <b>Ejecutar inmediatamente</b> si te lo permite.</li></ol>'
   +'<div class="warn" style="margin-bottom:10px"><b>Ojo con iOS:</b> los atajos abren el enlace en Safari, no en la app de tu pantalla de inicio, y las dos guardan sus datos por separado. Úsalo solo si trabajas desde Safari. Para la app instalada hace falta la versión con cuenta en la nube.</div>'

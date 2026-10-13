@@ -77,7 +77,8 @@ input,select{font-family:inherit;color:inherit;}
 #lock-in:focus{border-color:var(--acc);}
 #lock-btn{width:100%;max-width:260px;background:var(--fill);color:var(--onFill);padding:15px;border-radius:var(--r2);
   font-size:15px;font-weight:700;}
-#lock-err{color:var(--red);font-size:13px;height:16px;}
+#lock-err{color:var(--red);font-size:13px;min-height:16px;text-align:center;max-width:260px;}
+#lock-face{width:100%;max-width:260px;background:var(--card2);color:var(--tx);padding:14px;border-radius:var(--r2);font-size:15px;font-weight:650;margin-top:-6px;}
 
 /* ══ SHELL ══ */
 #app{display:none;max-width:600px;margin:0 auto;min-height:100%;padding-bottom:calc(96px + var(--safeb));}
@@ -331,6 +332,7 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
   <input type="password" id="lock-in" inputmode="numeric" placeholder="••••" autocomplete="off">
   <div id="lock-err"></div>
   <button id="lock-btn">Entrar</button>
+  <button id="lock-face" style="display:none">Entrar con Face ID</button>
 </div>
 
 <div id="nosave" style="display:none;position:fixed;left:0;right:0;top:0;z-index:500;
@@ -369,6 +371,7 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
     <div class="screen" id="s-importar"></div>
     <div class="screen" id="s-metas"></div>
     <div class="screen" id="s-nube"></div>
+    <div class="screen" id="s-inbox"></div>
     <div class="screen" id="s-tarjeta"></div>
     <div class="screen" id="s-ajustes"></div>
   </main>
@@ -1704,7 +1707,7 @@ function render(s){
   ({colombia:rColombia,alertas:rAlertas,resumen:rResumen,movs:rMovs,tarjetas:rCards,portafolio:rPort,mas:rMas,
     cobrar:rCobrar,pagar:rPagar,cash:rCash,horas:rHoras,ajustes:rAjustes,precios:rPrecios,
     presupuesto:rPresupuesto,subs:rSubs,tarjeta:rTarjeta,trabajo:rTrabajo,semanal:rSemanal,saava:rSaava,
-    usports:rUsports,solana:rSolana,split:rSplit,importar:rImportar,metas:rMetas,nube:rNube})[s]();
+    usports:rUsports,solana:rSolana,split:rSplit,importar:rImportar,metas:rMetas,nube:rNube,inbox:rInbox})[s]();
 }
 function refresh(){render(screen);}
 
@@ -1750,6 +1753,7 @@ function rResumen(){
       +'<div class="hero-chip"><div class="l">Cobrar</div><div class="v num g">'+kmoney(tot.cob)+'</div></div>'
     +'<div class="hero-chip"><div class="l">Deudas</div><div class="v num r">'+kmoney(tot.deu+tot.pag)+'</div></div>'
     +'</div></div>'
+   +(typeof inboxBanner==="function"?inboxBanner():"")
    +flowSnapshot()
    +nwCard()
    +cashOverview()+areaOverview()+
@@ -2059,6 +2063,7 @@ function rMas(){
     +'<div class="sec">Datos</div>'
     +'<div class="menu">'
     +mi("☁️",T.blu,"Nube y dispositivos",(typeof cloudShort==="function"?cloudShort():""),"go('nube')")
+    +mi("💳",T.grn,"Pagos por confirmar",(typeof inboxCount==="function"&&inboxCount()?inboxCount()+"":"ninguno"),"go('inbox')")
     +mi("📥",T.grn,"Importar movimientos","CSV · mensajes","go('importar')")
     +mi("⬇️",T.blu,"Exportar respaldo","JSON","exportData()")
     +mi("⬆️",T.pur,"Importar respaldo","","importData()")
@@ -2155,6 +2160,7 @@ function rAjustes(){
    +'<div class="f"><label>Tarifa por hora (café)</label>'
     +'<input id="set-rate" value="'+(D.settings.rate||0)+'" inputmode="decimal"></div>'
    +'<button class="btn" style="width:100%;margin-top:4px" onclick="saveSettings()">Guardar ajustes</button>'
+   +(typeof faceCard==="function"?faceCard():"")
    +'<div class="sec">Estado de guardado</div>'
    +'<div class="'+(storageOK?"card":"warn")+'" style="font-size:12.5px;line-height:1.6;'
    +(storageOK?"color:var(--tx2);padding:14px 16px":"")+'">'
@@ -2689,11 +2695,13 @@ function delRec(coll,id){
 <script src="./importui.js"></script>
 <script src="./metas.js"></script>
 <script src="./cloudui.js"></script>
+<script src="./faceid.js"></script>
 <script src="./portfolio-bridge.js"></script>
 <script>
 /* ═══════════════ BOOT ═══════════════ */
 var publicSession=null;
 function start(){
+  window.__started=true;
   storageOK=probarStorage();
   var habia=false;
   try{ habia=!!(localStorage.getItem(KEY)||localStorage.getItem(OLDKEY)); }catch(e){}
@@ -2726,12 +2734,18 @@ function start(){
   go("resumen");
   if(typeof handleDeepLink==="function") handleDeepLink();
 }
+// desbloquear: la primera vez arranca la app; si ya estaba abierta (candado al volver), solo quita el candado
+function entrar(){
+  if(window.__started){ el("lock").style.display="none"; }
+  else { ssSet("a$_ok","1"); start(); }
+}
 function tryLogin(){
-  if(el("lock-in").value===PWD){ ssSet("a$_ok","1"); start(); }
+  if(el("lock-in").value===PWD){ entrar(); }
   else{ el("lock-err").textContent="Contraseña incorrecta";
         el("lock-in").value=""; el("lock-in").focus(); }
 }
 el("lock-btn").onclick=tryLogin;
+el("lock-face").onclick=function(){ if(typeof faceUnlock==="function") faceUnlock(); };
 el("lock-in").onkeydown=function(e){if(e.key==="Enter")tryLogin();};
 el("fab").onclick=function(){openAdd("gasto");};
 el("bd").onclick=closeSheet;
@@ -2756,6 +2770,7 @@ document.querySelectorAll("nav button").forEach(function(b){
 document.addEventListener("keydown",function(e){if(e.key==="Escape")closeSheet();});
 window.addEventListener("hashchange",function(){ if(D&&typeof handleDeepLink==="function") handleDeepLink(); });
 
+if(typeof faceInit==="function") faceInit();
 if(ssGet("a$_ok")==="1") start();
 else el("lock-in").focus();
 </script>
