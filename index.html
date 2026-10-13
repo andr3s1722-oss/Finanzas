@@ -489,6 +489,11 @@ function normalize(d){
   d.solana.forEach(function(e){ if(e.balance===undefined && e.amount!==undefined) e.balance=Math.abs(e.amount); });
   d.settings=Object.assign({fx:4100,rate:17,weekly:250,theme:'claro'},d.settings||{});
   d.settings.budgets=d.settings.budgets||{};
+  if(!(d.settings.fx>=FX_MIN && d.settings.fx<=FX_MAX)){          // tasa dañada: vuelve a la última TRM válida
+    var trm=(d.prices||[]).filter(function(p){return p.unit==="COP" && /d[oó]lar|TRM|USD/i.test(p.label||"");})[0];
+    var ok=trm&&trm.history.filter(function(h){return h.p>=FX_MIN&&h.p<=FX_MAX;}).pop();
+    d.settings.fx=ok?ok.p:4100;
+  }
   d.cards.forEach(function(c){ c.promos=c.promos||[]; c.cashback=c.cashback||[];
     c.promos.forEach(function(o){if(!o.id)o.id=uid();});
     c.cashback.forEach(function(o){if(!o.id)o.id=uid();}); });
@@ -627,6 +632,33 @@ function toUSD(a,c){return c==="COP"? a/fx() : a;}
 /* Modo privado: el ojito de arriba tapa todos los montos. Siempre arranca visible. */
 var hideMoney=false, MASK="••••";
 function mask(txt){ return hideMoney?MASK:txt; }
+/* Guardas contra errores de moneda: montos dudosos, moneda recordada y rango de la tasa. */
+var FX_MIN=2000, FX_MAX=6000, LASTCUR_KEY="finanzas_ultima_moneda";
+function monedaInicial(){ return sGet(LASTCUR_KEY)==="COP"?"COP":"USD"; }
+function recordarMoneda(c){ try{ sSet(LASTCUR_KEY,c==="COP"?"COP":"USD"); }catch(e){} }
+function fxValida(v){ return v>=FX_MIN && v<=FX_MAX; }
+function esDolar(pr){ return pr.unit==="COP" && /d[oó]lar|TRM|USD/i.test(pr.label||""); }
+// tipo: "gasto" (5.000 USD), "ingreso"/"deuda" (10.000), "activo" (50.000)
+function montoDudoso(a,c,tipo){
+  var lim={gasto:5000,ingreso:10000,deuda:10000,activo:50000}[tipo]||10000;
+  if(c==="USD" && a>=lim)
+    return "¿Seguro que son "+a.toLocaleString("en-US")+" dólares (USD)?\n\nSi eran pesos, cancela y cambia la moneda a COP.";
+  if(c==="COP" && a<500 && tipo!=="activo")
+    return "¿Seguro que son solo "+a.toLocaleString("en-US")+" pesos (COP)? Eso son unos centavos de dólar.\n\nSi eran dólares, cancela y cambia la moneda a USD.";
+  return "";
+}
+/* ¿Parece un monto en pesos escrito con la moneda en USD? Se decide por comercio, categoría y formato. */
+var COP_COMERCIOS=/\b(oxxo|d1|exito|ara|rappi|frisby|juan valdez|olimpica|carulla|jumbo|makro|surtimax|nequi|bancolombia|davivienda|didi|transmilenio|sitp|domicilio|arepa|empanada|aguardiente|guaro|droguer\w*|cruz verde|farmatodo|colsubsidio|cafam|tostao|kokoriko|el corral|crepes y waffles|bodega|tienda)\b/;
+function parecePesos(desc,a,cat,raw){
+  if(!(a>0)) return false;
+  var d=String(desc||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  if(COP_COMERCIOS.test(d) && a>=1000) return true;
+  if({Restaurante:1,Mercado:1,Salud:1}[cat] && a>=1500) return true;
+  if(/^\s*\$?\s*\d{1,3}(\.\d{3})+\s*$/.test(String(raw||"")) && a>=1000) return true;   // 45.900
+  if(a>=10000 && cat!=="Vivienda") return true;
+  return false;
+}
+function confirmarMonto(a,c,tipo){ var m=montoDudoso(a,c,tipo); return !m || confirm(m); }
 function money(v,dec){
   if(hideMoney) return MASK;
   var s=v<0?"-":"";
@@ -707,7 +739,15 @@ function weekInner(gastado,b,extra){
       : (q>0? money(q/dias)+"/día · "+dias+(dias===1?" día":" días") : dias+(dias===1?" día":" días")))
     +'</span></div>';
 }
+function autoMoneda(){
+  if(_curManual||_cur!=="USD"||!el("f-desc")||!el("f-amount")) return;
+  var raw=el("f-amount").value, a=parseMonto(raw);
+  if(isNaN(a)||!parecePesos(el("f-desc").value,a,_cat,raw)) return;
+  setCur("COP",true);
+  toast("Parece en pesos: lo cambié a COP. Si era USD, tócalo para volver.");
+}
 function updWeek(){
+  autoMoneda();
   var box=el("wkb-live"); if(!box) return;
   var b=Finance.weeklyBudget(D); if(!b) return;
   var v=parseMonto((el("f-amount")||{}).value);
@@ -1561,11 +1601,15 @@ function sheetPrecios(){
     '<button class="btn" onclick="guardarPrecios()">Guardar</button>');
 }
 function guardarPrecios(){
-  var n=0;
+  var n=0, bad="";
   D.prices.forEach(function(pr,ix){
     var v=parseMonto(el("px-"+ix).value);
-    if(!isNaN(v)&&v>0){ setPrecio(pr,v); n++; }
+    if(!isNaN(v)&&v>0){
+      if(esDolar(pr)&&!fxValida(v)){ bad=pr.label; return; }
+      setPrecio(pr,v); n++;
+    }
   });
+  if(bad) return toast(bad+" debe estar entre 2.000 y 6.000 COP. No se guardó.");
   if(!n) return toast("No pusiste ningún precio");
   save(); closeSheet(); refresh(); toast(n+(n===1?" precio":" precios")+" actualizados ✓");
 }
@@ -1585,6 +1629,7 @@ function guardarPrecio(id){
   var pr=D.prices.filter(function(x){return x.id===id;})[0];
   var v=parseMonto(el("f-px").value);
   if(isNaN(v)||v<=0) return toast("Precio inválido");
+  if(esDolar(pr)&&!fxValida(v)) return toast("El dólar debe estar entre 2.000 y 6.000 COP");
   setPrecio(pr,v,val("f-pxd"));
   save(); closeSheet(); refresh(); toast("Precio guardado ✓");
 }
@@ -2133,7 +2178,10 @@ function rAjustes(){
 function saveSettings(){
   var f=parseMonto(el("set-fx").value), r=parseMonto(el("set-rate").value),
       w=parseMonto(el("set-week-cop").value);
-  if(f>0) D.settings.fx=f;
+  if(f>0){
+    if(!fxValida(f)) return toast("La tasa debe estar entre 2.000 y 6.000 COP por dólar");
+    D.settings.fx=f;
+  }
   if(r>=0) D.settings.rate=r;
   if(w>=0){D.settings.weeklyBudgetCOP=w;D.settings.weekly=Math.round(w/D.settings.fx*100)/100;}
   save(); toast("Ajustes guardados ✓"); go("mas");
@@ -2230,8 +2278,8 @@ function fAmount(v,cur){
     +'<button id="cur-COP" class="'+(cur==="COP"?"on":"")+'" onclick="setCur(\'COP\')">COP</button></div>';
 }
 function fitAmt(i){i.style.width=Math.max(3,(i.value||"0").length+0.5)+"ch";}
-var _cur="USD";
-function setCur(c){_cur=c;
+var _cur="USD", _curManual=false;
+function setCur(c,auto){_cur=c; if(!auto) _curManual=true;
   el("cur-USD").classList.toggle("on",c==="USD");el("cur-COP").classList.toggle("on",c==="COP");
   updWeek();}
 function fText(id,label,val,ph,type,extra){
@@ -2254,6 +2302,7 @@ function marcarCat(c){
 }
 // se apaga apenas tocas una categoría a mano: tu elección manda
 function autoCat(){
+  autoMoneda();
   if(_catManual) return;
   var campo=el("f-desc"); if(!campo) return;
   var c=detectarCat(campo.value);
@@ -2269,7 +2318,7 @@ function btns(saveFn,delFn){
 /* ── AGREGAR ── */
 var addKind="gasto";
 function openAdd(k){
-  addKind=k||"gasto"; _cur="USD"; _cat="Restaurante"; _catManual=false; _spread=1;
+  addKind=k||"gasto"; _cur=monedaInicial(); _curManual=false; _cat="Restaurante"; _catManual=false; _spread=1;
   var seg='<div class="seg cinco">'
     +[["gasto","Gasto"],["ingreso","Ingreso"],["cobrar","Deuda"],
       ["turno","Turno"],["inversion","Inversión"]].map(function(p){
@@ -2277,7 +2326,7 @@ function openAdd(k){
     +'</div>';
   var body,foot;
   if(addKind==="gasto"){
-    body=seg+weekBox(0,"wkb-live")+quickBar()+fAmount(null,"USD")
+    body=seg+weekBox(0,"wkb-live")+quickBar()+fAmount(null,_cur)
       +fText("f-desc","Descripción","","Walmart, gasolina…",null,'oninput="autoCat()"')
       +catGrid(_cat)+areaField()
       +fText("f-date","Fecha",today(),"","date")
@@ -2291,7 +2340,7 @@ function openAdd(k){
     foot=btns("addExp()");
   } else if(addKind==="ingreso"){
     _ventureSel="";
-    body=seg+fAmount(null,"USD")
+    body=seg+fAmount(null,_cur)
       +fText("f-src","Fuente","","Tips, pago café…")
       +fText("f-date","Fecha",today(),"","date")
       +ventureToggle("")+areaField();
@@ -2300,12 +2349,12 @@ function openAdd(k){
     body=seg+'<div class="seg mini" style="margin-bottom:16px">'
       +'<button id="dk-cobrar" class="on" onclick="setDk(\'cobrar\')">Me deben</button>'
       +'<button id="dk-pagar" onclick="setDk(\'pagar\')">Yo debo</button></div>'
-      +fAmount(null,"USD")
+      +fAmount(null,_cur)
       +fText("f-who","Persona","","Nombre")
       +fText("f-con","Concepto","","¿Por qué?");
     foot=btns("addDebt()");
   } else if(addKind==="inversion"){
-    body=seg+fAmount(null,"USD")
+    body=seg+fAmount(null,_cur)
       +fText("f-iname","Qué compraste","","VOO, BTC…")
       +'<div class="f"><label>Tipo</label><select id="f-itype">'
       +["Acción","ETF","Cripto","Otro"].map(function(t){return "<option>"+t+"</option>";}).join("")
@@ -2365,12 +2414,17 @@ function setSpread(n){
 function addExp(){
   var a=num("f-amount"), d=val("f-desc"), dt=val("f-date");
   if(!a||!d||!dt) return toast("Falta monto, descripción o fecha");
+  if(!_curManual && _cur==="USD" && parecePesos(d,a,_cat,el("f-amount").value)){ _cur="COP"; toast("Lo guardé en pesos (COP): "+a.toLocaleString("es-CO")+" parece pesos."); }
+  if(!confirmarMonto(a,_cur,"gasto")) return;
+  recordarMoneda(_cur);
   D.expenses.push({id:uid(),date:dt,desc:d,amount:a,currency:_cur,category:_cat,spread:_spread,area:val("f-area")||undefined});
   save(); closeSheet(); refresh(); toast("Gasto guardado ✓");
 }
 function addInc(){
   var a=num("f-amount"), s=val("f-src"), dt=val("f-date");
   if(!a||!s||!dt) return toast("Falta monto, fuente o fecha");
+  if(!confirmarMonto(a,_cur,"ingreso")) return;
+  recordarMoneda(_cur);
   var o={id:uid(),date:dt,source:s,amount:a,currency:_cur};
   if(_ventureSel) o.venture=_ventureSel;
   storeArea(o);
@@ -2412,6 +2466,8 @@ function addInv(){
 function addDebt(){
   var a=num("f-amount"), w=val("f-who"), c=val("f-con");
   if(!a||!w) return toast("Falta monto o persona");
+  if(!confirmarMonto(a,_cur,"deuda")) return;
+  recordarMoneda(_cur);
   (_dk==="cobrar"?D.receivables:D.payables).push({id:uid(),debtor:w,concept:c,amount:a,currency:_cur});
   save(); closeSheet(); refresh(); toast("Guardado ✓");
 }
@@ -2419,7 +2475,7 @@ function addDebt(){
 /* ── EDITAR ── */
 function editExp(id){
   var e=D.expenses.filter(function(x){return x.id===id;})[0]; if(!e) return;
-  _cur=e.currency; _cat=e.category; _catManual=true;
+  _cur=e.currency; _curManual=true; _cat=e.category; _catManual=true;
   sheet("Editar gasto",
     fAmount(e.amount,e.currency)+fText("f-desc","Descripción",e.desc)
     +catGrid(e.category)+areaField(e)+fText("f-date","Fecha",e.date,"","date"),
@@ -2428,6 +2484,7 @@ function editExp(id){
 function saveExp(id){
   var e=D.expenses.filter(function(x){return x.id===id;})[0];
   var a=num("f-amount"); if(!a) return toast("Monto inválido");
+  if(!confirmarMonto(a,_cur,"gasto")) return;
   e.amount=a; e.desc=val("f-desc"); e.date=val("f-date"); e.currency=_cur; e.category=_cat; storeArea(e);
   save(); closeSheet(); refresh(); toast("Actualizado ✓");
 }
@@ -2442,6 +2499,7 @@ function editInc(id){
 function saveInc(id){
   var i=D.income.filter(function(x){return x.id===id;})[0];
   var a=num("f-amount"); if(!a) return toast("Monto inválido");
+  if(!confirmarMonto(a,_cur,"ingreso")) return;
   i.amount=a; i.source=val("f-src"); i.date=val("f-date"); i.currency=_cur;
   if(_ventureSel) i.venture=_ventureSel; else delete i.venture; storeArea(i);
   save(); closeSheet(); refresh(); toast("Actualizado ✓");
@@ -2460,6 +2518,7 @@ function editDebt(kind,id){
 function saveDebt(kind,id){
   var arr=kind==="cobrar"?D.receivables:D.payables;
   var a=num("f-amount"), w=val("f-who"); if(!a||!w) return toast("Falta monto o persona");
+  if(!confirmarMonto(a,_cur,"deuda")) return;
   var venc=val("f-venc");
   if(id){ var r=arr.filter(function(x){return x.id===id;})[0];
     r.amount=a;r.debtor=w;r.concept=val("f-con");r.currency=_cur;
@@ -2533,6 +2592,7 @@ function editAsset(id){
 function saveAsset(id){
   var n=val("f-name"), v=num("f-val");
   if(!n||v==null) return toast("Faltan datos");
+  if(!confirmarMonto(v,_cur,"activo")) return;
   var t=el("f-type").value;
   if(id){var a=D.assets.filter(function(x){return x.id===id;})[0];
     a.name=n;a.type=t;a.value=v;a.currency=_cur;}

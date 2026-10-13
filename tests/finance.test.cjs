@@ -14,9 +14,9 @@ test('COP weekly budget stays fixed when the exchange rate changes',()=>{let d=e
 test('Colombia uses Saava margin and excludes car, investments, historical tips and wages',()=>{let d=empty();d.assets=[{name:'Jetta',type:'Vehículo',value:6000},{type:'Liquidez',value:8000000,currency:'COP'}];d.income=[{source:'Propinas',amount:9999}];d.cafe_hours=[{hours:100}];d.settings.colombia={saavaRevenue:2500,saavaCosts:800,livingCosts:1200,otherIncome:0,movingCost:500,reserveDebt:true};d.cards=[{balance:100}];let p=F.projection(d);assert.equal(p.net,500);assert.equal(p.initial,1400);assert.equal(p.months[11].balance,7400);assert.equal(p.tips,0);assert.equal(p.salary,0);});
 test('deficit, zero income, negative initial cash and scheduled debt alerts',()=>{let d=empty();d.settings.colombia={livingCosts:100};let p=F.projection(d);assert.equal(p.runway,0);assert.equal(p.months[11].balance,-1200);d.payables=[{debtor:'A',amount:50,vence:'2026-09-14'},{debtor:'B',amount:50,vence:'fin de mes'}];d.cards=[{name:'Visa',balance:800,limit:1000}];const alerts=F.alerts(d,'2026-09-13');assert(alerts.some(a=>a.title==='Pago próximo'));assert.equal(alerts.filter(a=>a.target==='pagar').length,1);assert(alerts.some(a=>a.target==='tarjetas'));});
 function app(){
- const nodes=new Map(),el=id=>{if(!nodes.has(id))nodes.set(id,{style:{},classList:{add(){},remove(){},toggle(){}},value:'',innerHTML:'',focus(){},setAttribute(){},querySelectorAll(){return []}});return nodes.get(id);};
+ const store=new Map(),nodes=new Map(),el=id=>{if(!nodes.has(id))nodes.set(id,{style:{},classList:{add(){},remove(){},toggle(){}},value:'',innerHTML:'',focus(){},setAttribute(){},querySelectorAll(){return []}});return nodes.get(id);};
  const doc={getElementById:el,querySelectorAll(){return []},addEventListener(){},documentElement:{setAttribute(){}}};
- const ctx=vm.createContext({Finance:F,Split:S,Importer:I,URLSearchParams,location:{hash:'',origin:'https://x.test',pathname:'/Finanzas/',search:''},history:{replaceState(){}},document:doc,window:{scrollTo(){},addEventListener(){}},setTimeout(){},clearTimeout(){},console,sessionStorage:{getItem(){return null}},localStorage:{getItem(){return null},setItem(){}},confirm(){return true}});
+ const ctx=vm.createContext({Finance:F,Split:S,Importer:I,URLSearchParams,location:{hash:'',origin:'https://x.test',pathname:'/Finanzas/',search:''},history:{replaceState(){}},document:doc,window:{scrollTo(){},addEventListener(){}},setTimeout(){},clearTimeout(){},console,sessionStorage:{getItem(){return null}},localStorage:{getItem(k){return store.has(k)?store.get(k):null},setItem(k,v){store.set(k,String(v))}},confirm(){return true}});
  const dir=path.join(__dirname,'..'),html=fs.readFileSync(path.join(dir,'index.html'),'utf8');
  for(const m of html.matchAll(/<script(?: src="([^"]+)")?>([\s\S]*?)<\/script>/g)){if(m[1]){if(/planning|flow|splitui|importui|metas/.test(m[1]))vm.runInContext(fs.readFileSync(path.join(dir,m[1]),'utf8'),ctx);}else vm.runInContext(m[2],ctx);}
  ctx.D=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));ctx.curMonth='2026-09';return {ctx,el};
@@ -137,7 +137,7 @@ test('Apple Pay deep link opens a prefilled expense and income',()=>{
  const {ctx,el}=app();
  ctx.location.hash='#add?monto=%2416.56&desc=Wendy%27s&moneda=USD';ctx.handleDeepLink();
  assert.equal(el('f-amount').value,16.56);assert.equal(el('f-desc').value,"Wendy's");assert.equal(ctx._cat,'Restaurante');
- ctx.location.hash='#add?monto=45.900&desc=Rappi';ctx.handleDeepLink();assert.equal(ctx._cur,'COP');assert.equal(el('f-amount').value,45900);
+ ctx.location.hash='#add?monto=45.900&desc=Rappi&moneda=COP';ctx.handleDeepLink();assert.equal(ctx._cur,'COP');assert.equal(el('f-amount').value,45900);
  ctx.location.hash='#add?monto=500&desc=Pago&tipo=ingreso';ctx.handleDeepLink();assert.equal(el('f-src').value,'Pago');
 });
 test('goals track contributions and net-worth history keeps one snapshot per day',()=>{
@@ -165,4 +165,63 @@ test('privacy eye masks every amount and restores them, starting visible',()=>{
  for(const s of shown){ctx.go(s);const h=el('s-'+s).innerHTML;assert(!/\$\s?\d/.test(h),s+' leaks: '+(h.match(/.{20}\$\s?\d.{10}/)||[''])[0]);}
  assert(el('s-resumen').innerHTML.includes('••••'));
  ctx.setHide(false);ctx.go('resumen');assert(/\$\d/.test(el('s-resumen').innerHTML));
+});
+
+test('guards: dubious amounts ask before saving and can be cancelled',()=>{
+ const {ctx,el}=app();let asked=0,answer=false;ctx.confirm=m=>{asked++;return answer;};
+ const fill=(amt,desc,cat)=>{ctx.openAdd('gasto');ctx._cat=cat||'Otros';el('f-amount').value=amt;el('f-desc').value=desc;el('f-date').value='2026-10-03';};
+ fill('7500','Reparación');ctx._cur='USD';ctx.addExp();assert.equal(ctx.D.expenses.length,0);assert.equal(asked,1);
+ answer=true;ctx.addExp();assert.equal(ctx.D.expenses.length,1);assert.equal(ctx.D.expenses[0].currency,'USD');
+ asked=0;fill('4600','Entrada','Ocio');ctx._cur='USD';ctx.addExp();assert.equal(asked,0);assert.equal(ctx.D.expenses.length,2);
+ answer=false;fill('15','Tinto');ctx._cur='COP';ctx.addExp();assert.equal(asked,1);assert.equal(ctx.D.expenses.length,2);
+ fill('47500','Papas','Restaurante');ctx._cur='COP';asked=0;ctx.addExp();assert.equal(asked,0);assert.equal(ctx.D.expenses.length,3);
+ assert.match(ctx.montoDudoso(87000,'USD','ingreso'),/pesos/);assert.equal(ctx.montoDudoso(1170000,'COP','activo'),'');assert(ctx.montoDudoso(1170000,'USD','activo'));
+});
+test('guards: the last currency used is remembered for new records only',()=>{
+ const {ctx,el}=app();
+ ctx.openAdd('gasto');assert.equal(ctx._cur,'USD');
+ el('f-amount').value='45900';el('f-desc').value='Rappi';el('f-date').value='2026-10-03';ctx._cur='COP';ctx.addExp();
+ ctx.openAdd('gasto');assert.equal(ctx._cur,'COP');
+ el('f-amount').value='12';el('f-desc').value='Wendys';el('f-date').value='2026-10-03';ctx._cur='USD';ctx.addExp();
+ ctx.openAdd('ingreso');assert.equal(ctx._cur,'USD');
+ ctx.D.expenses.push({id:'x',date:'2026-10-03',desc:'Old',amount:50000,currency:'COP',category:'Otros'});ctx.editExp('x');assert.equal(ctx._cur,'COP');
+});
+test('guards: the dollar rate must stay between 2,000 and 6,000 and a broken one self-heals',()=>{
+ const {ctx,el}=app();const fx0=ctx.D.settings.fx;
+ el('set-fx').value='1';el('set-rate').value='17';ctx.saveSettings();assert.equal(ctx.D.settings.fx,fx0);
+ el('set-fx').value='3.300,50';ctx.saveSettings();assert.equal(ctx.D.settings.fx,3300.5);
+ const trm=ctx.D.prices.filter(p=>p.unit==='COP')[0];el('f-px').value='5';el('f-pxd').value='2026-10-13';ctx.guardarPrecio(trm.id);
+ assert.equal(ctx.D.settings.fx,3300.5);assert(!trm.history.some(h=>h.p===5));
+ el('f-px').value='3250';ctx.guardarPrecio(trm.id);assert.equal(ctx.D.settings.fx,3250);
+ const healed=ctx.normalize({expenses:[],income:[],settings:{fx:1},prices:[{id:'p',label:'Dólar (TRM)',unit:'COP',history:[{d:'2026-10-09',p:3218.75},{d:'2026-10-10',p:0.5}]}]});
+ assert.equal(healed.settings.fx,3218.75);
+ assert.equal(ctx.normalize({expenses:[],income:[],settings:{fx:0}}).settings.fx,4100);
+});
+
+test('auto-detects pesos typed as dollars, live and on save, but respects manual choices and edits',()=>{
+ const {ctx,el}=app();
+ const open=()=>{ctx.openAdd('gasto');el('f-date').value='2026-10-03';};
+ // live: merchant + amount
+ open();el('f-desc').value='Oxxo';el('f-amount').value='4500';ctx.updWeek();assert.equal(ctx._cur,'COP');
+ // category-based
+ open();ctx._cat='Restaurante';el('f-desc').value='Papas';el('f-amount').value='47500';ctx.updWeek();assert.equal(ctx._cur,'COP');
+ // Colombian thousands format
+ open();ctx._cat='Otros';el('f-desc').value='Cosa';el('f-amount').value='45.900';ctx.updWeek();assert.equal(ctx._cur,'COP');
+ // real dollar amounts stay
+ for(const [cat,d,a] of [['Restaurante','Wendys','16.56'],['Ocio','Entrada Mundial','4600'],['Vivienda','Hotel','4500'],['Transporte','Frenos','633.23'],['Mercado','Oxxo','12']]){open();ctx._cat=cat;el('f-desc').value=d;el('f-amount').value=a;ctx.updWeek();assert.equal(ctx._cur,'USD',d+a);}
+ // manual choice wins
+ open();ctx.setCur('USD');el('f-desc').value='Oxxo';el('f-amount').value='4500';ctx.updWeek();assert.equal(ctx._cur,'USD');
+ // safety net on save without events
+ open();ctx._cat='Mercado';el('f-desc').value='Oxxo';el('f-amount').value='4500';ctx._cur='USD';ctx.addExp();
+ const last=ctx.D.expenses[ctx.D.expenses.length-1];assert.equal(last.currency,'COP');assert.equal(last.amount,4500);
+ // editing never flips
+ ctx.D.expenses.push({id:'z',date:'2026-10-03',desc:'Oxxo',amount:4500,currency:'USD',category:'Mercado'});ctx.editExp('z');el('f-amount').value='4600';ctx.updWeek();assert.equal(ctx._cur,'USD');
+});
+
+test('Apple Pay link is always dollars unless it says COP, and never auto-detects pesos',()=>{
+ const {ctx,el}=app();
+ ctx.location.hash='#add?monto=4500&desc=Oxxo';ctx.handleDeepLink();assert.equal(ctx._cur,'USD');
+ el('f-desc').value='Oxxo';el('f-amount').value='4500';ctx.updWeek();assert.equal(ctx._cur,'USD');
+ ctx.location.hash='#add?monto=45.900&desc=Rappi';ctx.handleDeepLink();assert.equal(ctx._cur,'USD');
+ ctx.location.hash='#add?monto=4500&desc=Oxxo&moneda=COP';ctx.handleDeepLink();assert.equal(ctx._cur,'COP');
 });

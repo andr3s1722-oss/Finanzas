@@ -66,7 +66,7 @@ function delPersona(id){
 function sheetSplit(id){
  if(!D.people.length){toast('Primero agrega a una persona');return sheetPersona(null,true);}
  var e=id?D.splits.filter(function(x){return x.id===id;})[0]:null;
- _cur=e?(e.currency||'USD'):'USD';_cat=e?(e.category||'Restaurante'):'Restaurante';_catManual=!!e;_spread=1;
+ _cur=e?(e.currency||'USD'):monedaInicial();_curManual=!!e;_cat=e?(e.category||'Restaurante'):'Restaurante';_catManual=!!e;_spread=1;
  _sp={id:id||null,payer:e?e.payer:'me',who:{},exact:{},mode:'igual',record:e?!!e.expenseId:true};
  if(e){
   e.parts.forEach(function(p){_sp.who[p.who]=true;_sp.exact[p.who]=p.share;});
@@ -131,6 +131,8 @@ function saveSplit(){
  var a=num('f-amount'),d=val('f-desc'),dt=val('f-date'),ids=spIds();
  if(!a||!d||!dt)return toast('Falta monto, descripción o fecha');
  if(!ids.length)return toast('Elige entre quiénes se divide');
+ if(!_curManual&&_cur==='USD'&&parecePesos(d,a,_cat,el('f-amount').value)){_cur='COP';toast('Lo guardé en pesos (COP): '+a.toLocaleString('es-CO')+' parece pesos.');}
+ if(!confirmarMonto(a,_cur,'gasto'))return;
  if(ids.length===1&&ids[0]===_sp.payer)return toast('Elige también a otra persona: quien pagó no se debe a sí mismo');
  var parts;
  if(_sp.mode==='igual')parts=Split.equal(a,ids);
@@ -140,7 +142,7 @@ function saveSplit(){
   if(Math.abs(sum-a)>0.01)return toast('Los montos suman '+spFmt(Split.cents(sum),_cur)+', no '+spFmt(a,_cur));
  }
  var e=_sp.id?D.splits.filter(function(x){return x.id===_sp.id;})[0]:null;
- if(!e){e={id:uid(),kind:'gasto'};D.splits.push(e);}
+ if(!e){e={id:uid(),kind:'gasto'};D.splits.push(e);recordarMoneda(_cur);}
  e.date=dt;e.desc=d;e.amount=a;e.currency=_cur;e.category=_cat;e.payer=_sp.payer;e.parts=parts;
  var mine=Split.myShare(e),ex=e.expenseId?D.expenses.filter(function(x){return x.id===e.expenseId;})[0]:null;
  if(_sp.record&&mine>0){

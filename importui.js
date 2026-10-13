@@ -1,5 +1,5 @@
 /* Importar movimientos (mensajes pegados o CSV), atajo de Apple Pay y exportación CSV. */
-var impItems=[],impRows=null,impOpts={currency:'USD',dateOrder:'auto',expensesPositive:false},impMsgCur='USD',impNote='';
+var impItems=[],impRows=null,impOpts={currency:monedaInicial(),dateOrder:'auto',expensesPositive:false},impMsgCur='auto',impNote='';
 function impSite(){return location.origin+location.pathname;}
 function impDownload(name,text,type){
  try{
@@ -54,6 +54,8 @@ function impReview(){
 function impCommit(){
  var sel=impItems.filter(function(i){return i.on&&i.amount>0&&i.desc;});
  if(!sel.length)return toast('No hay movimientos marcados');
+ var raro=sel.filter(function(it){return montoDudoso(it.amount,it.currency,it.kind==='gasto'?'gasto':'ingreso');})[0];
+ if(raro&&!confirm('Hay montos que parecen tener la moneda equivocada, por ejemplo "'+raro.desc+'" ('+raro.amount.toLocaleString('en-US')+' '+raro.currency+').\n\nAceptar = importar así. Cancelar = revisar.'))return;
  var batch=uid();
  sel.forEach(function(it){
   if(it.kind==='gasto')D.expenses.push({id:uid(),date:it.date,desc:it.desc,amount:it.amount,currency:it.currency,category:it.cat||'Otros',spread:1,importBatch:batch});
@@ -92,7 +94,7 @@ function rImportar(){
   +'<p class="note" style="padding-top:0">En <b>Atajos → Automatización → Transacción</b> (se activa al pagar con Apple Pay):</p>'
   +'<ol class="imp-steps"><li>Acción <b>Abrir URL</b>.</li><li>Escribe <code>'+esc(impSite())+'#add?monto=</code>, inserta la variable <b>Cantidad</b>, luego <code>&amp;desc=</code> y la variable <b>Comerciante</b>.</li><li>Elige <b>Ejecutar inmediatamente</b> si te lo permite.</li></ol>'
   +'<div class="warn" style="margin-bottom:10px"><b>Ojo con iOS:</b> los atajos abren el enlace en Safari, no en la app de tu pantalla de inicio, y las dos guardan sus datos por separado. Úsalo solo si trabajas desde Safari. Para la app instalada hace falta la versión con cuenta en la nube.</div>'
-  +'<p class="note" style="padding-bottom:6px">La app se abre con el gasto ya lleno y solo tocas Guardar. Los datos viajan después del <b>#</b>, así que no llegan a ningún servidor. Parámetros: <code>monto</code>, <code>desc</code>, <code>moneda</code> (USD o COP), <code>fecha</code>, <code>tipo=ingreso</code>.</p>'
+  +'<p class="note" style="padding-bottom:6px">La app se abre con el gasto ya lleno y solo tocas Guardar. Los datos viajan después del <b>#</b>, así que no llegan a ningún servidor. Parámetros: <code>monto</code>, <code>desc</code>, <code>moneda</code> (siempre USD, salvo que pongas <code>moneda=COP</code>), <code>fecha</code>, <code>tipo=ingreso</code>.</p>'
   +'<button class="btn gh" style="width:100%" onclick="impCopyLink()">Copiar enlace de ejemplo</button></div>'
   +'<div class="sec">Exportar</div><div class="card"><button class="btn gh" style="width:100%;color:var(--tx)" onclick="impExportCSV()">Descargar todos los movimientos (CSV)</button></div>';
  impReview();
@@ -105,10 +107,11 @@ function handleDeepLink(){
  try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
  var ing=/^ing/i.test(q.tipo||'');
  var raw=String(q.monto||q.amount||''),amt=Importer.amountNumber(raw);
- var cur=/cop|peso/i.test((q.moneda||q.currency||'')+' '+raw)?'COP':((q.moneda||q.currency)?'USD':(Importer.looksCOP(raw.replace(/[^\d.,]/g,''))?'COP':'USD'));
+ // Apple Pay: tus tarjetas son en dólares. Solo es COP si el atajo lo dice (moneda=COP); aquí no se adivina.
+ var cur=/^(cop|peso)/i.test(String(q.moneda||q.currency||''))?'COP':'USD';
  openAdd(ing?'ingreso':'gasto');
  if(!isNaN(amt)&&amt!==0){el('f-amount').value=Math.abs(amt);fitAmt(el('f-amount'));}
- if(cur==='COP')setCur('COP');
+ setCur(cur);
  var d=q.desc||q.comercio||q.merchant||'';
  if(ing){if(d)el('f-src').value=d;}else{if(d){el('f-desc').value=d;autoCat();}}
  if(q.fecha&&/^\d{4}-\d{2}-\d{2}$/.test(q.fecha))el('f-date').value=q.fecha;

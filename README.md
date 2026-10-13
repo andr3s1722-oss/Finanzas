@@ -34,6 +34,8 @@ Sin `area`, Saava se reconoce por `category` o `venture`; Ninas y Sequo se agrup
 - `goals[]` y `history[]` (nuevos, opcionales): metas con `log` de aportes, y una foto diaria del patrimonio (`{d, nw}`) que se guarda al abrir la app; dibujar pantallas nunca modifica los datos.
 - Movimientos importados llevan `importBatch` para poder deshacer el último lote.
 
+- Guardas de moneda: al guardar, un gasto en USD de 5.000 o más (ingresos, deudas y similares, 10.000; activos, 50.000) o un monto en COP menor a 500 pide confirmación. Los formularios nuevos arrancan en la última moneda usada con éxito (preferencia local `finanzas_ultima_moneda`, fuera del respaldo). En gastos nuevos (y en Split), si la moneda sigue en USD pero el monto parece pesos —comercio colombiano con 1.000 o más (Oxxo, Rappi, D1…), Restaurante/Mercado/Salud con 1.500 o más, formato `45.900`, o 10.000 o más fuera de Vivienda— el selector cambia solo a COP y lo avisa; si eliges la moneda a mano, o editas un registro, no se toca. El enlace `#add` de Atajos no adivina: es USD salvo `moneda=COP`. La tasa del dólar solo admite 2.000–6.000 COP, igual que la TRM oficial; si un respaldo trae una tasa fuera de rango se repara con la última TRM válida del historial (o 4.100).
+
 ## Criterios de cálculo
 
 - Semanas completas de lunes a domingo, incluso al cruzar meses/años. Ingresos = `income` + horas × tarifa actual. El salario se atribuye a Personal y se incluye en balances y alertas. Se calcula al mostrar la app sin añadir registros al JSON. No registrar de nuevo el pago de esas horas, pues se sumaría dos veces. Cambiar la tarifa recalcula estimaciones históricas, como en la versión original. Las propinas ligadas se cuentan una sola vez.
