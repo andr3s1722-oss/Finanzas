@@ -373,6 +373,9 @@ nav button.on svg{stroke-width:2.1;transform:translateY(-1px);}
     <div class="screen" id="s-proyecto"></div>
     <div class="screen" id="s-ayuda"></div>
     <div class="screen" id="s-fijos"></div>
+    <div class="screen" id="s-viajes"></div>
+    <div class="screen" id="s-viaje"></div>
+    <div class="screen" id="s-ingresos"></div>
     <div class="screen" id="s-nube"></div>
     <div class="screen" id="s-inbox"></div>
     <div class="screen" id="s-tarjeta"></div>
@@ -498,7 +501,7 @@ function ssSet(k,v){ try{ sessionStorage.setItem(k,v); }catch(e){} }
 function normalize(d){
   d.expenses=d.expenses||[]; d.income=d.income||[]; d.receivables=d.receivables||[];
   d.payables=d.payables||[]; d.cards=d.cards||[]; d.investments=d.investments||[];
-  d.assets=d.assets||[]; d.cafe_hours=d.cafe_hours||[]; d.prices=d.prices||[]; d.solana=d.solana||[]; d.subscriptions=d.subscriptions||[]; d.people=d.people||[]; d.splits=d.splits||[]; d.goals=d.goals||[]; d.history=d.history||[]; d.fixed=d.fixed||[]; d.recurring=d.recurring||[]; d.projects=d.projects||[]; d.bills=d.bills||[];
+  d.assets=d.assets||[]; d.cafe_hours=d.cafe_hours||[]; d.prices=d.prices||[]; d.solana=d.solana||[]; d.subscriptions=d.subscriptions||[]; d.people=d.people||[]; d.splits=d.splits||[]; d.goals=d.goals||[]; d.history=d.history||[]; d.fixed=d.fixed||[]; d.recurring=d.recurring||[]; d.projects=d.projects||[]; d.bills=d.bills||[]; d.trips=d.trips||[];
   d.solana.forEach(function(e){ if(e.balance===undefined && e.amount!==undefined) e.balance=Math.abs(e.amount); });
   d.settings=Object.assign({fx:4100,rate:0,weekly:0,theme:'claro'},d.settings||{});
   d.settings.budgets=d.settings.budgets||{};
@@ -516,7 +519,7 @@ function normalize(d){
     d.investments=d.investments.filter(function(i){return i.type!=="Vehículo"&&i.type!=="Liquidez";});
     move.forEach(function(m){d.assets.push({id:uid(),name:m.name,type:m.type,value:m.currentValue,currency:m.currency});});
   }
-  ["expenses","income","receivables","payables","cards","investments","assets","cafe_hours","prices","solana","subscriptions","people","splits","goals","fixed","recurring","projects","bills"].forEach(function(k){
+  ["expenses","income","receivables","payables","cards","investments","assets","cafe_hours","prices","solana","subscriptions","people","splits","goals","fixed","recurring","projects","bills","trips"].forEach(function(k){
     d[k].forEach(function(o){if(!o.id)o.id=uid();});
   });
   migrarCategorias(d);
@@ -1640,7 +1643,8 @@ function rPresupuesto(){
         +'</div>';}).join("")
     +'</div>'
     +'<div class="note">Toca una categoría para ponerle o quitarle tope. '
-    +'Solo las que tienen tope cuentan en el total de arriba.</div>';
+    +'Solo las que tienen tope cuentan en el total de arriba.</div>'
+    +(typeof watchCard==="function"?watchCard():"");
 }
 function sheetTope(cat){
   var b=D.settings.budgets;
@@ -1826,7 +1830,7 @@ function render(s){
   ({colombia:rColombia,alertas:rAlertas,resumen:rResumen,movs:rMovs,tarjetas:rCards,portafolio:rPort,mas:rMas,
     cobrar:rCobrar,pagar:rPagar,cash:rCash,horas:rHoras,ajustes:rAjustes,precios:rPrecios,
     presupuesto:rPresupuesto,subs:rSubs,tarjeta:rTarjeta,trabajo:rTrabajo,semanal:rSemanal,saava:rSaava,
-    usports:rUsports,solana:rSolana,split:rSplit,importar:rImportar,metas:rMetas,nube:rNube,inbox:rInbox,proyecto:rProyecto,ayuda:rAyuda,fijos:rFijos})[s]();
+    usports:rUsports,solana:rSolana,split:rSplit,importar:rImportar,metas:rMetas,nube:rNube,inbox:rInbox,proyecto:rProyecto,ayuda:rAyuda,fijos:rFijos,viajes:rViajes,viaje:rViaje,ingresos:rIngresos})[s]();
 }
 function refresh(){render(screen);}
 
@@ -2175,6 +2179,8 @@ function rMas(){
     +'</div><div class="sec">Control</div><div class="menu">'
     +mi("📆",T.blu,"Flujo · semana y mes","","go('semanal')")
     +mi("👥",T.pur,"Split · gastos compartidos",(function(){var t=Split.totalsUSD(D,fx());return Math.abs(t.net)<0.005?"al día":(t.net>0?"+":"")+money(t.net);})(),"go('split')")
+    +mi("📄",T.grn,"Contratos e ingresos",D.recurring.length+"","go('ingresos')")
+    +mi("🧳",T.pur,"Viajes",money(sumUSD(D.expenses.filter(function(e){return Finance.area(e)==="Viajes";}))),"go('viajes')")
     +mi("🧾",T.org,"Gastos fijos",money(billsMonthlyUSD())+"/mes","go('fijos')")
     +mi("🎯",T.lima,"Presupuesto",money(presupuestoTotal()),"go('presupuesto')")
     +mi("🏁",T.cyn,"Metas de ahorro",D.goals.length+"","go('metas')")
@@ -2439,7 +2445,8 @@ function catGrid(sel){
     +'</div></div>';
 }
 var _cat="Restaurante", _catManual=false;
-function pickCat(b){_cat=b.dataset.cat; _catManual=true;
+function descInput(){ autoCat(); if(typeof watchHint==="function") watchHint(); }
+function pickCat(b){_cat=b.dataset.cat; _catManual=true; if(typeof watchHint==="function") watchHint();
   document.querySelectorAll(".cat").forEach(function(x){x.classList.toggle("on",x===b);});}
 function marcarCat(c){
   _cat=c;
@@ -2472,8 +2479,9 @@ function openAdd(k){
   var body,foot;
   if(addKind==="gasto"){
     body=seg+quickBar()+fAmount(null,_cur)
-      +fText("f-desc","Descripción","","Walmart, gasolina…",null,'oninput="autoCat()"')
-      +catGrid(_cat)+weekBox(0,"wkb-live")
+      +fText("f-desc","Descripción","","Walmart, gasolina…",null,'oninput="descInput()"')
+      +'<div id="watch-hint" class="watch-hint" style="display:none"></div>'
+      +catGrid(_cat)+(typeof tripChips==="function"?tripChips(null):"")+weekBox(0,"wkb-live")
       +masOpciones(fText("f-date","Fecha",today(),"","date")+areaField()
       +'<div class="f"><label>Repartir en varias semanas</label>'
       +'<div class="seg mini" id="spread-seg">'
@@ -2562,8 +2570,11 @@ function addExp(){
   if(!_curManual && _cur==="USD" && parecePesos(d,a,_cat,el("f-amount").value)){ _cur="COP"; toast("Lo guardé en pesos (COP): "+a.toLocaleString("es-CO")+" parece pesos."); }
   if(!confirmarMonto(a,_cur,"gasto")) return;
   recordarMoneda(_cur);
-  D.expenses.push({id:uid(),date:dt,desc:d,amount:a,currency:_cur,category:_cat,spread:_spread,area:val("f-area")||undefined});
+  var nuevo={id:uid(),date:dt,desc:d,amount:a,currency:_cur,category:_cat,spread:_spread,area:val("f-area")||undefined};
+  if(typeof storeTrip==="function") storeTrip(nuevo);
+  D.expenses.push(nuevo);
   save(); closeSheet(); refresh(); toast("Gasto guardado ✓");
+  if(typeof avisoGasto==="function") avisoGasto(nuevo);
 }
 function addInc(){
   var a=num("f-amount"), s=val("f-src"), dt=val("f-date");
@@ -2619,7 +2630,7 @@ function editExp(id){
   _cur=e.currency; _curManual=true; _cat=e.category; _catManual=true;
   sheet("Editar gasto",
     fAmount(e.amount,e.currency)+fText("f-desc","Descripción",e.desc)
-    +catGrid(e.category)+areaField(e)+fText("f-date","Fecha",e.date,"","date"),
+    +catGrid(e.category)+(typeof tripChips==="function"?tripChips(e):"")+areaField(e)+fText("f-date","Fecha",e.date,"","date"),
     btns("saveExp('"+id+"')","delRec('expenses','"+id+"')"));
 }
 function saveExp(id){
@@ -2627,7 +2638,9 @@ function saveExp(id){
   var a=num("f-amount"); if(!a) return toast("Monto inválido");
   if(!confirmarMonto(a,_cur,"gasto")) return;
   e.amount=a; e.desc=val("f-desc"); e.date=val("f-date"); e.currency=_cur; e.category=_cat; storeArea(e);
+  if(typeof storeTrip==="function") storeTrip(e);
   save(); closeSheet(); refresh(); toast("Actualizado ✓");
+  if(typeof avisoGasto==="function") avisoGasto(e);
 }
 function editInc(id){
   var i=D.income.filter(function(x){return x.id===id;})[0]; if(!i) return;
@@ -2828,6 +2841,10 @@ function delRec(coll,id){
 <script src="./cloudui.js"></script>
 <script src="./fixed.js"></script>
 <script src="./income.js"></script>
+<script src="./worldmap.js"></script>
+<script src="./mapa.js"></script>
+<script src="./viajes.js"></script>
+<script src="./vigilar.js"></script>
 <script src="./fijos.js"></script>
 <script src="./wizard.js"></script>
 <script src="./onboarding.js"></script>
@@ -2836,7 +2853,7 @@ function delRec(coll,id){
 <script>
 /* ═══════════════ BOOT ═══════════════ */
 var publicSession=null;
-var APP_VERSION="2026.10.13.9";   // súbela cada vez que publiques, para saber qué copia tiene el celular
+var APP_VERSION="2026.10.25.11";   // súbela cada vez que publiques, para saber qué copia tiene el celular
 function start(){
   window.__started=true;
   storageOK=probarStorage();

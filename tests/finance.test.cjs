@@ -19,7 +19,7 @@ function app(){
  const doc={getElementById:el,querySelectorAll(){return []},addEventListener(){},documentElement:{setAttribute(){}}};
  const ctx=vm.createContext({Finance:F,Split:S,Importer:I,Cloud:Cl,atob:globalThis.atob,btoa:globalThis.btoa,crypto:globalThis.crypto,URLSearchParams,location:{hostname:'andr3s1722-oss.github.io',hash:'',origin:'https://x.test',pathname:'/Finanzas/',search:''},history:{replaceState(){}},document:doc,window:{scrollTo(){},addEventListener(){}},setTimeout(){},clearTimeout(){},console,sessionStorage:{getItem(){return null}},localStorage:{getItem(k){return store.has(k)?store.get(k):null},setItem(k,v){store.set(k,String(v))},removeItem(k){store.delete(k)}},confirm(){return true}});
  const dir=path.join(__dirname,'..'),html=fs.readFileSync(path.join(dir,'index.html'),'utf8');
- for(const m of html.matchAll(/<script(?: src="([^"]+)")?>([\s\S]*?)<\/script>/g)){if(m[1]){if(/planning|flow|splitui|importui|metas|cloudui|fixed|income|fijos|wizard|onboarding|faceid/.test(m[1]))vm.runInContext(fs.readFileSync(path.join(dir,m[1]),'utf8'),ctx);}else vm.runInContext(m[2],ctx);}
+ for(const m of html.matchAll(/<script(?: src="([^"]+)")?>([\s\S]*?)<\/script>/g)){if(m[1]){if(/planning|flow|splitui|importui|metas|cloudui|fixed|income|fijos|worldmap|mapa|viajes|vigilar|wizard|onboarding|faceid/.test(m[1]))vm.runInContext(fs.readFileSync(path.join(dir,m[1]),'utf8'),ctx);}else vm.runInContext(m[2],ctx);}
  ctx.D=ctx.normalize(JSON.parse(JSON.stringify(ctx.SEED)));ctx.curMonth='2026-09';return {ctx,el};
 }
 test('legacy JSON roundtrip preserves custom fields, balances, IDs and references',()=>{const {ctx}=app();const fixture={...empty(),custom:{kept:true},investments:[],income:[{id:'tip',source:'Propinas',date:'2026-09-07',amount:40,currency:'USD',custom:'keep'}],expenses:[{id:'e',date:'2026-09-07',desc:'Groceries',category:'Mercado',amount:80,currency:'USD',spread:4}],cafe_hours:[{id:'h',date:'2026-09-07',hours:6,tipId:'tip'}],assets:[{id:'car',name:'Jetta',type:'Vehículo',value:6000,currency:'USD'}]};let normalized=ctx.normalize(structuredClone(fixture));let roundtrip=ctx.normalize(JSON.parse(JSON.stringify(normalized)));assert.equal(JSON.stringify(roundtrip),JSON.stringify(normalized));assert.equal(roundtrip.custom.kept,true);assert.equal(roundtrip.income[0].custom,'keep');assert.equal(roundtrip.cafe_hours[0].tipId,'tip');assert.equal(roundtrip.assets.length,1);});
@@ -619,4 +619,139 @@ test('bill names are recognized: Tigo/Claro are services, Claude/Netflix are sub
  // una cuota quincenal de suscripción se guarda como su equivalente mensual
  ctx.sheetBill(null,7);el('f-srcname').value='Opus Clip';ctx.billAutoCat();ctx.srcFreq('quincenal');el('f-amount').value='10';ctx._cur='USD';el('f-srcd1').value='1';el('f-srcd2').value='16';el('f-srcstart').value='2026-10-01';ctx.saveBill(null);
  assert.equal(ctx.D.subscriptions.find(x=>x.name==='Opus Clip').amount,20);
+});
+
+test('Apple Pay test payment goes through the same anonymous call the shortcut uses and shows up in the inbox',async()=>{
+ const {ctx,el}=app();ctx.window.PublicSync={getSession:async()=>({access_token:'tok'})};
+ const calls=[];let rows=[];
+ ctx.cloudRequest=async(url,o={})=>{calls.push({url,o});
+  if(url.includes('capture_expense')){const b=JSON.parse(o.body);rows.push({id:'t'+rows.length,created_at:'2026-10-14T01:00:00Z',amount_raw:b.amount,merchant:b.merchant,currency:b.currency,card:b.card});return {ok:true,status:200,data:true,text:''};}
+  return {ok:true,status:200,data:rows.slice(),text:''};};
+ await ctx.cloudTestPayment();assert.equal(calls.length,0);                                 // sin llave: no hace nada
+ ctx.cloudToken='f'.repeat(64);await ctx.cloudTestPayment();
+ const c=calls.find(x=>x.url.includes('capture_expense'));assert(!c.o.headers.Authorization);assert.equal(c.o.headers.apikey,ctx.CLOUD_KEY);
+ const body=JSON.parse(c.o.body);assert.equal(body.token,'f'.repeat(64));assert.match(body.amount,/^\$\d+\.\d\d$/);assert.equal(body.currency,'USD');
+ assert.equal(ctx.inboxCount(),1);assert(ctx.inboxBanner().includes('1 pago por confirmar'));
+ assert(ctx.cloudApplePayCard().includes('Enviar pago de prueba'));
+ ctx.cloudRequest=async()=>({ok:true,status:200,data:false,text:''});await ctx.cloudTestPayment();           // llave inválida: el servidor responde false
+});
+
+test('trips: create, pre-check travel expenses, move them out of the personal budget, totals, form chips and removal',()=>{
+ const {ctx,el}=app();ctx.today=()=>'2026-10-25';ctx.D.settings.weekly=104;
+ ctx.D.expenses=[
+  {id:'h',date:'2026-10-23',desc:'Tiquete',amount:85050,currency:'COP',category:'Transporte'},
+  {id:'u',date:'2026-10-23',desc:'Uber',amount:12600,currency:'COP',category:'Transporte'},
+  {id:'b',date:'2026-10-25',desc:'Bus',amount:79200,currency:'COP',category:'Transporte'},
+  {id:'f',date:'2026-10-25',desc:'Burger',amount:57.61,currency:'USD',category:'Restaurante'},
+  {id:'x',date:'2026-10-10',desc:'Pádel',amount:30,currency:'USD',category:'Ocio'},
+  {id:'old',date:'2026-09-22',desc:'Hotel',amount:158.5,currency:'USD',category:'Vivienda',area:'Viajes'}];
+ ctx.sheetViaje();el('f-vjname').value='Medellín';el('f-vjemoji').value='🌆';el('f-vjstart').value='2026-10-23';el('f-vjend').value='2026-10-25';ctx.saveViaje(null);
+ assert.equal(ctx.D.trips.length,1);const t=ctx.D.trips[0];assert(el('sh-t').textContent.includes('Medellín'));              // abre el selector de gastos
+ assert.equal(ctx._mv.sel.h,true);assert.equal(ctx._mv.sel.b,true);assert.equal(ctx._mv.sel.f,false);assert(!('x' in ctx._mv.sel));    // solo en fechas del viaje; los de viaje por palabra vienen marcados
+ ctx.mvToggle('f');ctx.mvToggle('u');ctx.mvAplicar();
+ const tagged=ctx.D.expenses.filter(e=>e.tripId===t.id).map(e=>e.id).sort().join(',');assert.equal(tagged,'b,f,h,u');
+ assert(ctx.D.expenses.filter(e=>e.tripId).every(e=>F.area(e)==='Viajes'));
+ assert(Math.abs(ctx.viajeTotal(t.id)-(85050+12600+79200)/ctx.fx()-57.61)<0.01);
+ assert.equal(F.weekly(ctx.D,'2026-10-19','Personal').spent,0);                                          // el viaje ya no pesa en el presupuesto personal
+ ctx.go('viajes');assert(el('s-viajes').innerHTML.includes('Medellín')&&el('s-viajes').innerHTML.includes('sin asignar')&&el('s-viajes').innerHTML.includes('Hotel'));   // el hotel con área Viajes queda «sin asignar»
+ ctx.verViaje(t.id);assert(el('s-viaje').innerHTML.includes('En qué se fue')&&el('s-viaje').innerHTML.includes('Burger'));
+ // fila «¿Es de un viaje?» visible en el formulario de gasto, también sin viajes
+ ctx.openAdd('gasto');assert(el('sh-b').innerHTML.includes('¿Es de un viaje?')&&el('sh-b').innerHTML.includes('Medellín')&&el('sh-b').innerHTML.includes('+ Nuevo viaje'));
+ el('f-desc').value='Taxi';el('f-amount').value='15';el('f-date').value='2026-10-24';ctx.tripPick(t.id);ctx.addExp();
+ const nuevo=ctx.D.expenses[ctx.D.expenses.length-1];assert.equal(nuevo.tripId,t.id);assert.equal(nuevo.area,'Viajes');
+ ctx.openAdd('gasto');assert.equal(ctx._tripSel,'');el('f-desc').value='Café';el('f-amount').value='3';el('f-date').value='2026-10-24';ctx.addExp();assert.equal(ctx.D.expenses[ctx.D.expenses.length-1].tripId,undefined);
+ // crear un viaje al vuelo desde el formulario
+ ctx.prompt=()=>'Cartagena';ctx.openAdd('gasto');ctx.tripNuevo();assert.equal(ctx.D.trips.length,2);assert.equal(ctx._tripSel,ctx.D.trips[1].id);
+ // editar: preseleccionado y se puede quitar
+ ctx.editExp('f');assert(el('sh-b').innerHTML.includes('chip on'));assert.equal(ctx._tripSel,t.id);ctx.tripPick('');ctx._cur='USD';el('f-amount').value='57.61';ctx.saveExp('f');assert.equal(ctx.D.expenses.find(e=>e.id==='f').tripId,undefined);
+ ctx.delViaje(t.id);assert.equal(ctx.D.trips.length,1);assert(ctx.D.expenses.every(e=>e.tripId!==t.id));
+});
+test('spending alerts: rules by words warn before you pass the cap, hint while typing, category and weekly caps',()=>{
+ const {ctx,el}=app();ctx.today=()=>'2026-10-25';ctx.D.settings.weekly=104;ctx.D.settings.budgets={Ocio:80};
+ assert(F.watchMatches({words:['fria']},'Fría Bote')&&F.watchMatches({words:['fria']},'FRIA')&&F.watchMatches({words:['bar']},'Bar Escobar')&&!F.watchMatches({words:['bar']},'Barber shop')&&F.watchMatches({words:['padel']},'Torneo Pádel')&&!F.watchMatches({words:['fria']},'Frío'));
+ ctx.watchSugeridas();assert.equal(ctx.D.settings.watch.length,2);
+ const E=(id,desc,usd,date)=>({id,date:date||'2026-10-20',desc,amount:usd,currency:'USD',category:'Ocio'});
+ ctx.D.expenses=[E('a','Pádel',12),E('b','Torneo Pádel',8),E('o','Futbol',10,'2026-10-12')];
+ // 20 de 30 (67%): solo aviso breve
+ let cnt=0;ctx.toast=m=>{cnt++;ctx._last=m;};
+ let info=ctx.avisoGasto(ctx.D.expenses[0]);assert.equal(info.level>=1,info.lines.some(l=>l.lvl>=1));
+ ctx.D.expenses.push(E('c','Pádel',5));info=ctx.avisoGasto(ctx.D.expenses.at(-1));assert(info.lines.some(l=>/Pádel: llevas \$25\.00 de \$30\.00/.test(l.txt)));   // 83% = ya te vas a pasar
+ assert(el('sh-t').textContent.includes('Ya te vas a pasar'));assert(el('sh-b').innerHTML.includes('Acuérdate: no gastar más de lo que ganas'));
+ ctx.D.expenses.push(E('d','Pádel',10));info=ctx.avisoGasto(ctx.D.expenses.at(-1));assert.equal(info.level,2);assert(el('sh-t').textContent.includes('Te pasaste'));assert(el('sh-b').innerHTML.includes('te pasaste por $5.00'));
+ // sin regla ni tope: no avisa
+ ctx.D.expenses.push({id:'z',date:'2026-10-21',desc:'Tinto',amount:2,currency:'USD',category:'Salud'});ctx.closeSheet();el('sh-t').textContent='';info=ctx.avisoGasto(ctx.D.expenses.at(-1));assert.equal(info.lines.length,0);assert.equal(el('sh-t').textContent,'');
+ // tope de categoría Ocio: 80 → con los $45 + futbol 10 +… sube
+ ctx.D.expenses.push(E('e','Cine',30));info=ctx.avisoGasto(ctx.D.expenses.at(-1));assert(info.lines.some(l=>/Ocio: llevas/.test(l.txt)));
+ // aviso en vivo antes de guardar
+ ctx.D.expenses=[E('a','Pádel',25)];ctx.openAdd('gasto');el('f-desc').value='Pádel';el('f-amount').value='10';el('f-date').value='2026-10-20';ctx._cat='Ocio';ctx.watchHint();
+ assert.equal(el('watch-hint').style.display,'block');assert(el('watch-hint').innerHTML.includes('con esto llegas a $35.00 de $30.00'));
+ el('f-desc').value='Tinto';ctx.watchHint();assert.notEqual(el('watch-hint').style.display,'block');
+ // semana: $104 → llegar al 80%
+ ctx.D.settings.watch=[];ctx.D.settings.budgets={};ctx.D.expenses=[{id:'w',date:'2026-10-21',desc:'Mercado grande',amount:90,currency:'USD',category:'Mercado'}];
+ info=ctx.avisoGasto(ctx.D.expenses[0]);assert(info.lines.some(l=>/Esta semana: llevas \$90\.00 de \$104\.00/.test(l.txt)));
+ // gastos de viaje no cuentan en la semana
+ ctx.D.expenses[0].area='Viajes';info=ctx.avisoGasto(ctx.D.expenses[0]);assert.equal(info.lines.length,0);
+ // reglas: crear/validar/editar/borrar
+ ctx.sheetWatch();el('f-wname').value='';ctx.saveWatch(null);assert.equal(ctx.D.settings.watch.length,0);
+ el('f-wname').value='Domicilios';el('f-wwords').value='rappi, domicilio';el('f-amount').value='20';ctx._cur='USD';ctx.wPer('semana');ctx.saveWatch(null);
+ assert.equal(ctx.D.settings.watch.length,1);assert.equal(ctx.D.settings.watch[0].period,'semana');assert.equal(JSON.stringify(ctx.D.settings.watch[0].words),'["rappi","domicilio"]');
+ ctx.go('presupuesto');assert(el('s-presupuesto').innerHTML.includes('Alertas de gasto')&&el('s-presupuesto').innerHTML.includes('Domicilios'));
+ ctx.delWatch(ctx.D.settings.watch[0].id);assert.equal(ctx.D.settings.watch.length,0);
+});
+test('contracts screen: two payments of $225 (Oct 30 and Nov 13), pending prompt on the day, confirm once and shows as collected',()=>{
+ const {ctx,el}=app();ctx.today=()=>'2026-10-25';
+ ctx.D.recurring=[{id:'c1',kind:'extra',name:'Contrato',amount:225,currency:'USD',freq:'quincenal',days:[13,30],start:'2026-10-30',skipped:[]}];
+ assert.equal(JSON.stringify(F.payDates(ctx.D.recurring[0],'2026-10-25','2026-12-31')),'["2026-10-30","2026-11-13","2026-11-30","2026-12-13","2026-12-30"]');
+ ctx.go('ingresos');let h=el('s-ingresos').innerHTML;assert(h.includes('Contratos e ingresos')&&h.includes('Contrato')&&h.includes('Próximo')&&h.includes('$225.00'));
+ assert.equal(F.pendingIncome(ctx.D,'2026-10-25').length,0);assert(ctx.ingresosCard().includes('Próximo pago'));
+ ctx.today=()=>'2026-10-30';assert.equal(F.pendingIncome(ctx.D,'2026-10-30').length,1);assert(ctx.ingresosCard().includes('¿Ya te pagaron?'));
+ ctx.confirmarPago('c1','2026-10-30');ctx.confirmarPago('c1','2026-10-30');assert.equal(ctx.D.income.length,1);assert.equal(ctx.D.income[0].amount,225);
+ ctx.go('ingresos');h=el('s-ingresos').innerHTML;assert(h.includes('Cobrado')&&h.includes('Cobrados'));
+ ctx.go('mas');assert(el('s-mas').innerHTML.includes('Contratos e ingresos')&&el('s-mas').innerHTML.includes('Viajes'));
+});
+
+test('map: projection, framing, city lookup with aliases and no accents, online geocoding fallback',async()=>{
+ const {ctx}=app();
+ const [x,y]=ctx.mapXY(41.88,-87.63);assert(Math.abs(x-184.7)<0.1&&Math.abs(y-96.2)<0.1);assert.equal(ctx.mapXY(0,0).join(),'360,180');assert.equal(ctx.mapXY(90,-180).join(),'0,0');
+ const w=ctx.mapView([],1.9);assert(w[2]<=720&&w[3]<=360&&w[0]>=0&&w[1]>=0);
+ const one=ctx.mapView([ctx.mapXY(6.25,-75.56)],1.9,60);assert.equal(one[2],60);assert(Math.abs(one[2]/one[3]-1.9)<1e-6);assert(one[0]>=0&&one[0]+one[2]<=720&&one[1]>=0&&one[1]+one[3]<=360);
+ const polo=ctx.mapView([ctx.mapXY(-80,170)],1.9,60);assert(polo[1]+polo[3]<=360&&polo[0]+polo[2]<=720);                       // pegado a un borde: no se sale
+ const dos=ctx.mapView([ctx.mapXY(41.88,-87.63),ctx.mapXY(6.25,-75.56)],1.75,90);assert(dos[2]>=90);
+ assert.equal(ctx.ciudadBuscar('MEDELLIN').city,'Medellín');assert.equal(ctx.ciudadBuscar('new york').city,'Nueva York');assert.equal(ctx.ciudadBuscar('Cartagena').flag,'🇨🇴');assert.equal(ctx.ciudadBuscar('lake george').country,'Estados Unidos');
+ assert.equal(ctx.ciudadBuscar('cdmx').city,'Ciudad de México');assert.equal(ctx.ciudadBuscar('x'),null);assert.equal(ctx.ciudadBuscar('zzzzzz'),null);assert.equal(ctx.banderaDe('co'),'🇨🇴');assert.equal(ctx.banderaDe('xyz'),'');
+ ctx.cloudRequest=async(url)=>({ok:true,status:200,data:{results:[{name:'Jericó',country:'Colombia',country_code:'CO',latitude:5.79,longitude:-75.79}]},text:''});
+ const g=await ctx.ciudadGeocodificar('Jericó');assert.equal(g.city,'Jericó');assert.equal(g.flag,'🇨🇴');assert.equal(g.lat,5.79);
+ ctx.cloudRequest=async()=>({ok:true,status:200,data:{},text:''});assert.equal(await ctx.ciudadGeocodificar('Nowhere'),null);
+ ctx.cloudRequest=async()=>{throw new Error('offline');};assert.equal(await ctx.ciudadGeocodificar('Algo'),null);
+ const svg=ctx.mapaSvg([{id:'a',lat:41.88,lon:-87.63,city:'Chicago',start:'2026-09-21'},{id:'b',lat:6.25,lon:-75.56,city:'Medellín',start:'2026-10-23'},{id:'c',name:'Sin ciudad'}],{etiquetas:true,click:'verViaje'});
+ assert.equal((svg.match(/class="map-dot"/g)||[]).length,2);assert.equal((svg.match(/class="map-route"/g)||[]).length,1);assert(svg.includes('Chicago')&&svg.includes("verViaje('a')")&&svg.includes('map-land'));assert(!/NaN|undefined/.test(svg));
+ assert(ctx.mapaSvg([],{}).includes('map-land'));
+});
+test('trips are visual: city on the map, calendar badges, countdown, passport stats, day-by-day bars',async()=>{
+ const {ctx,el}=app();ctx.today=()=>'2026-10-25';
+ ctx.D.expenses=[{id:'1',date:'2026-09-21',desc:'Vuelo Chicago',amount:162.4,currency:'USD',category:'Transporte',area:'Viajes',tripId:'ch'},{id:'2',date:'2026-09-22',desc:'Hotel',amount:158.5,currency:'USD',category:'Vivienda',area:'Viajes',tripId:'ch'},{id:'3',date:'2026-09-25',desc:'Uber',amount:85.45,currency:'USD',category:'Transporte',area:'Viajes',tripId:'ch'}];
+ // guardar con ciudad conocida: se ubica sola, sin red
+ ctx.sheetViaje();el('f-vjcity').value='Chicago';el('f-vjname').value='Entrega del Jetta';el('f-vjemoji').value='🏙️';el('f-vjstart').value='2026-09-21';el('f-vjend').value='2026-09-25';ctx.saveViaje(null);
+ let v=ctx.D.trips[0];assert.equal(v.city,'Chicago');assert.equal(v.country,'Estados Unidos');assert.equal(v.flag,'🇺🇸');assert.equal(v.lat,41.88);assert.equal(v.name,'Entrega del Jetta');
+ v.id='ch';
+ ctx.D.trips.push({id:'me',name:'Medellín',city:'Medellín',country:'Colombia',flag:'🇨🇴',lat:6.25,lon:-75.56,start:'2026-10-23',end:'2026-10-25'},{id:'fu',name:'Cartagena',city:'Cartagena',country:'Colombia',flag:'🇨🇴',lat:10.39,lon:-75.48,start:'2026-11-20',end:'2026-11-23'},{id:'sc',name:'Hotel Ecuador',start:'2026-10-01'});
+ assert.equal(ctx.viajeNoches(v),4);assert.equal(ctx.viajeDias(v),5);assert.equal(ctx.viajeNoches(ctx.D.trips[3]),null);assert.equal(ctx.viajeDias(ctx.D.trips[3]),1);
+ assert.equal(ctx.viajeCuando(v).t,'hace 4 sem');assert.equal(ctx.viajeCuando(v).c,'past');
+ assert.equal(ctx.viajeCuando(ctx.D.trips[1]).c,'now');assert.equal(ctx.viajeCuando(ctx.D.trips[2]).t,'en 26 días');assert.equal(ctx.viajeCuando(ctx.D.trips[2]).c,'soon');assert(/^hace \d+/.test(ctx.viajeCuando(ctx.D.trips[3]).t));
+ assert(ctx.calBadge('2026-09-21').includes('SEP')&&ctx.calBadge('2026-09-21').includes('21'));assert.equal(ctx.calBadge(''),'');
+ assert(ctx.viajeFechasHtml(v).includes('4 noches')&&ctx.viajeFechasHtml(v).includes('cal-arrow'));assert(ctx.viajeFechasHtml({}).includes('sin fechas'));
+ const pas=ctx.viajePasaporte(ctx.D.trips);assert.equal(pas.ciudades,3);assert.equal(pas.paises,2);assert.equal(pas.dias,5+3+4+1);
+ ctx.go('viajes');const h=el('s-viajes').innerHTML;
+ assert.equal((h.match(/class="map-dot"/g)||[]).length,3+3);          // 3 pines en el mapa grande + uno en cada mini-mapa
+ assert(h.includes('class="pasaporte"')&&h.includes('días de viaje')&&h.includes('🇺🇸 Chicago')&&h.includes('Entrega del Jetta')&&h.includes('trip-globe')&&h.includes('en 26 días')&&h.includes('¡ahora mismo!')&&h.includes('2026'));
+ assert(!/NaN|undefined/.test(h));
+ ctx.verViaje('ch');const d=el('s-viaje').innerHTML;
+ assert(d.includes('map-city')&&d.includes('Estados Unidos')&&d.includes('Día por día')&&d.includes('class="tb peak"')&&d.includes('día más caro')&&d.includes('Lo más caro')&&d.includes('Uber'));
+ assert.equal((d.match(/class="tb/g)||[]).length,5);assert(!/NaN|undefined/.test(d));
+ ctx.verViaje('sc');assert(el('s-viaje').innerHTML.includes('Ponle una ciudad')&&!/NaN|undefined/.test(el('s-viaje').innerHTML));
+ // ciudad fuera de la lista: busca en línea y pone el pin cuando llega
+ ctx.cloudRequest=async()=>({ok:true,status:200,data:{results:[{name:'Jericó',country:'Colombia',country_code:'CO',latitude:5.79,longitude:-75.79}]},text:''});
+ ctx.sheetViaje('sc');el('f-vjcity').value='Jericó';el('f-vjname').value='Hotel Ecuador';el('f-vjemoji').value='🏔️';el('f-vjstart').value='2026-10-01';el('f-vjend').value='';ctx.saveViaje('sc');
+ await new Promise(r=>setTimeout(r,20));const sc=ctx.D.trips.find(t=>t.id==='sc');assert.equal(sc.lat,5.79);assert.equal(sc.flag,'🇨🇴');assert.equal(sc.city,'Jericó');
+ ctx.cloudRequest=async()=>({ok:false,status:500,data:null,text:''});ctx.sheetViaje('sc');el('f-vjcity').value='Lugar Inexistente';ctx.saveViaje('sc');await new Promise(r=>setTimeout(r,20));assert.equal(ctx.D.trips.find(t=>t.id==='sc').lat,undefined);assert.equal(ctx.D.trips.find(t=>t.id==='sc').city,'Lugar Inexistente');
 });

@@ -197,6 +197,16 @@ async function cloudRevokeToken(){
  try{var r=await cloudRequest(CLOUD_URL+'/rest/v1/rpc/revoke_capture_token',{method:'POST',headers:cloudHeaders(s,true),body:'{}'});cloudToken='';toast(r.ok?'Llave revocada':'No se pudo revocar');}catch(e){toast('Sin conexión');}
  rNube();
 }
+/* Envía un pago de prueba por el mismo camino que usará el atajo (sin sesión, solo con la llave). */
+async function cloudTestPayment(){
+ if(!cloudToken)return toast('Primero crea la llave');
+ var monto='$'+(1+Math.floor(Math.random()*99)/100).toFixed(2);   // monto distinto cada vez: dos pruebas seguidas no se cuentan como una
+ try{
+  var r=await cloudRequest(CLOUD_URL+'/rest/v1/rpc/capture_expense',{method:'POST',headers:cloudHeaders(null,true),body:JSON.stringify({token:cloudToken,amount:monto,merchant:'Prueba de Apple Pay',currency:'USD',card:'Prueba'})});
+  if(r.ok&&r.data===true){await cloudInboxPull(true);toast('Llegó a tu nube ✓ Míralo en Pagos por confirmar');rNube();return;}
+  toast(r.ok?'La nube rechazó la llave. Crea otra y reintenta':'No se pudo enviar ('+r.status+')');
+ }catch(e){toast('Sin conexión');}
+}
 function cloudCopy(txt,label){
  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(txt).then(function(){toast((label||'Texto')+' copiado ✓');},function(){toast('No se pudo copiar');});
  else toast('No se pudo copiar');
@@ -206,6 +216,7 @@ function cloudApplePayCard(){
  var steps=cloudToken
   ?'<div class="warn" style="margin-bottom:10px"><b>Copia tu llave ahora.</b> No se vuelve a mostrar. Si la pierdes, crea otra.</div>'
    +'<div class="dash-actions" style="margin:0 0 12px"><button onclick="cloudCopy(cloudToken,\'Llave\')">Copiar llave</button><button onclick="cloudCopy(\''+url+'\',\'Dirección\')">Copiar dirección</button><button onclick="cloudCopy(CLOUD_KEY,\'apikey\')">Copiar apikey</button></div>'
+   +'<div class="dash-actions" style="margin:0 0 12px"><button onclick="cloudTestPayment()">Enviar pago de prueba</button></div>'
    +'<ol class="imp-steps"><li>En <b>Atajos → Automatización → +</b> elige <b>Transacción</b> (se activa al pagar con Apple Pay). Marca tus tarjetas y <b>Ejecutar inmediatamente</b>.</li>'
    +'<li>Añade la acción <b>Obtener contenido de la URL</b>. URL: la dirección copiada. Método: <b>POST</b>.</li>'
    +'<li>Encabezados: <code>apikey</code> = la apikey copiada, y <code>Content-Type</code> = <code>application/json</code>.</li>'

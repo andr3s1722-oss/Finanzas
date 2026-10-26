@@ -99,3 +99,32 @@ function trabajoAjustes(){
   +(srcs?'<div class="list">'+srcs+'</div>':'<div class="note" style="padding:0 0 8px">Agrega tu sueldo (semanal, quincenal o mensual) y cualquier ingreso extra: te avisamos cuando toca cobrarlo.</div>')
   +'<div class="dash-actions" style="margin:8px 0 0"><button onclick="sheetFuente(null,\'sueldo\')">+ Sueldo</button><button onclick="sheetFuente(null,\'extra\')">+ Ingreso extra</button></div></div>';
 }
+
+/* ── Pantalla «Contratos e ingresos» ── */
+function rIngresos(){
+ var m=monthOf(today()),hoy=today(),from=m+'-01',to=Finance.lastDay(m);
+ var esperado=0,cobrado=sumUSD(D.income.filter(function(i){return i.recurringId&&monthOf(i.date)===m;}));
+ D.recurring.forEach(function(r){Finance.payDates(r,from,to).forEach(function(){esperado+=toUSD(r.amount,r.currency);});});
+ var prox=[];
+ D.recurring.forEach(function(r){Finance.payDates(r,Finance.plus(hoy,-45),Finance.plus(hoy,75)).forEach(function(dt){
+  var hecho=D.income.some(function(i){return i.recurringId===r.id&&i.recurringDate===dt;}),omitido=(r.skipped||[]).indexOf(dt)>=0;
+  if(dt<hoy&&(hecho||omitido))return;                       // lo ya cobrado queda en «Cobrados»
+  prox.push({r:r,date:dt,estado:hecho?'cobrado':(omitido?'omitido':(dt<=hoy?'pendiente':'próximo'))});
+ });});
+ prox.sort(function(a,b){return a.date.localeCompare(b.date);});
+ var hechos=D.income.filter(function(i){return i.recurringId;}).sort(function(a,b){return b.date.localeCompare(a.date);}).slice(0,6);
+ var chip={cobrado:'Cobrado ✓',pendiente:'¿Llegó?',próximo:'Próximo',omitido:'Omitido'};
+ el('s-ingresos').innerHTML='<div class="dash-intro"><div class="eyebrow">De dónde te llega la plata</div><h1>Contratos e ingresos.</h1><p>Tus contratos, sueldos e ingresos extra, con cada pago esperado. Cuando llega el día te preguntamos si ya te pagaron.</p></div>'
+  +'<div class="hero"><div class="hero-l">Esperado en '+monthLabel(m)+'</div><div class="hero-v num g">'+money(esperado)+'</div><div class="hero-s">'+D.recurring.length+(D.recurring.length===1?' ingreso recurrente':' ingresos recurrentes')+'</div>'
+  +'<div class="hero-row flow-three"><div class="hero-chip"><div class="l">Cobrado</div><div class="v num g">'+money(cobrado)+'</div></div><div class="hero-chip"><div class="l">Falta</div><div class="v num">'+money(Math.max(0,esperado-cobrado))+'</div></div></div></div>'
+  +ingresosCard()
+  +'<div class="dash-actions"><button onclick="sheetFuente(null,\'extra\')">+ Contrato o ingreso</button><button onclick="sheetFuente(null,\'sueldo\')">+ Sueldo</button></div>'
+  +(prox.length?'<div class="sec">Próximos pagos</div><div class="card" style="padding:6px 14px"><div class="list">'+prox.slice(0,8).map(function(p){
+    return '<div class="row"><div class="ico" style="background:#0F7A461f">💵</div><div class="row-m"><div class="row-t">'+esc(p.r.name)+'</div><div class="row-s">'+dayLabel(p.date)+' · '+chip[p.estado]+'</div></div><div class="row-v num g">+'+fmt(p.r.amount,p.r.currency)+'</div></div>';
+   }).join('')+'</div></div>':'<div class="empty"><div class="e">📄</div><div class="t">Aún no hay ingresos recurrentes</div><div class="s">Agrega un contrato o sueldo para ver tus próximos pagos</div></div>')
+  +(D.recurring.length?'<div class="sec">Tus ingresos recurrentes</div><div class="card" style="padding:6px 14px"><div class="list">'+D.recurring.map(function(r){
+    return '<div class="row" onclick="sheetFuente(\''+r.id+'\')"><div class="ico" style="background:#0F7A461f">'+(r.kind==='sueldo'?'💼':'📄')+'</div><div class="row-m"><div class="row-t">'+esc(r.name)+'</div><div class="row-s">'+(FREQ.filter(function(f){return f[0]===r.freq;})[0]||['',''])[1]+' · '+srcFreqText(r)+'</div></div><div class="row-v num g">'+fmt(r.amount,r.currency)+'</div></div>';
+   }).join('')+'</div></div>':'')
+  +(hechos.length?'<div class="sec">Cobrados</div><div class="card" style="padding:6px 14px">'+movRows(hechos.map(function(i){return {k:'i',o:i};}))+'</div>':'');
+}
+TITLES.ingresos='Contratos e ingresos';SUBS.ingresos=1;

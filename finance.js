@@ -144,6 +144,21 @@ function billsPendingMonth(d,month,budgets){
  });
  return total;
 }
+/* ── Alertas de gasto: reglas por palabras (pádel, fría…) con tope mensual o semanal ──
+   rule: {id,name,words:['padel','fria'],cap:USD,period:'mes'|'semana'} */
+function watchMatches(rule,desc){
+ const n=' '+key(desc)+' ';
+ return (rule.words||[]).some(w=>{const k=key(w);return k&&(k.length>=5?n.includes(k):n.includes(' '+k+' '));});
+}
+function watchRange(rule,today){return rule.period==='semana'?range('semana',today):range('mes',today);}
+function watchSpent(d,rule,today){
+ const r=watchRange(rule,today);
+ return (d.expenses||[]).filter(e=>e.date>=r.start&&e.date<=r.end&&watchMatches(rule,e.desc)).reduce((s,e)=>s+usd(d,e),0);
+}
+function watchStatus(d,rule,today,extra){
+ const cap=Number(rule.cap)||0,spent=watchSpent(d,rule,today)+(Number(extra)||0);
+ return {spent,cap,left:cap-spent,pct:cap>0?spent/cap*100:0,over:cap>0&&spent>cap,near:cap>0&&spent>=cap*0.8};
+}
 /* Cómo te pagan: por horas (como el café), sueldo fijo, variable o nada. Sin elección guardada, se deduce de tus datos. */
 function workMode(d){
  const w=(d.settings||{}).work;if(w&&w.mode)return w.mode;
@@ -185,6 +200,6 @@ function alerts(d,today){
  if(colombiaOn(d)&&d.settings.colombia){let p=projection(d);if(p.net<0||p.initial<0)out.push({title:'Revisa tu plan Colombia',text:p.initial<0?'El efectivo inicial no cubre las reservas y la mudanza.':'El escenario pierde '+(-p.net).toFixed(2)+' USD al mes.',target:'colombia'});}
  return out;
 }
-const api={incomes,areas,setProjects,area,usd,iso,plus,monday,isTip,weekly,weeklyBudget,projection,alerts,colombiaOn,fixedStats,daysBetween,payDates,pendingIncome,nextPay,workMode,workTips,billMonthly,pendingBills,nextBill,billsPendingMonth,lastDay,range,shift,span,key};
+const api={incomes,areas,setProjects,area,usd,iso,plus,monday,isTip,weekly,weeklyBudget,projection,alerts,colombiaOn,fixedStats,daysBetween,payDates,pendingIncome,nextPay,workMode,workTips,watchMatches,watchSpent,watchStatus,billMonthly,pendingBills,nextBill,billsPendingMonth,lastDay,range,shift,span,key};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.Finance=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
