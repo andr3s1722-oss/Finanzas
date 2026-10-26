@@ -411,6 +411,7 @@ test('pay schedules: quincena on 15 and 30 (clamped in short months), monthly, w
  assert.deepEqual(F.payDates({id:'s',freq:'semanal',weekday:5,start:'2026-10-01'},'2026-10-01','2026-10-31'),['2026-10-02','2026-10-09','2026-10-16','2026-10-23','2026-10-30']);
  assert.deepEqual(F.payDates({id:'x',freq:'quincenal',start:'2026-12-20'},'2026-12-01','2027-01-31'),['2026-12-30','2027-01-15','2027-01-30']);
  assert.deepEqual(F.payDates(q,'2026-10-20','2026-10-10'),[]);
+ assert.deepEqual(F.payDates({id:'c',freq:'quincenal',days:[13,30],start:'2026-10-30',end:'2026-11-13'},'2026-10-01','2027-03-31'),['2026-10-30','2026-11-13']);
 });
 test('pending income: confirm once, skip, next payment, and the Resumen card',()=>{
  const {ctx,el}=app();ctx.today=()=>'2026-10-31';

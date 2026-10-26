@@ -93,6 +93,7 @@ function projection(d){
 function monthLast(y,m){return new Date(y,m,0,12).getDate();}
 function payDates(r,from,to){
  const out=[],lo=r.start&&r.start>from?r.start:from;
+ if(r.end&&r.end<to)to=r.end;
  if(!lo||!to||lo>to)return out;
  if(r.freq==='semanal'){
   let t=lo;const wd=Number(r.weekday);
