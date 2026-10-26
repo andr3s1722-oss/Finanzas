@@ -711,6 +711,18 @@ test('contracts screen: two payments of $225 (Oct 30 and Nov 13), pending prompt
  ctx.go('mas');assert(el('s-mas').innerHTML.includes('Contratos e ingresos')&&el('s-mas').innerHTML.includes('Viajes'));
 });
 
+test('contrato de un proyecto: el pago cae en Trusty Handyman, el mapa sale en Resumen y Plan Colombia se oculta',()=>{
+ const {ctx,el}=app();ctx.today=()=>'2026-10-30';
+ ctx.D.projects=[{id:'p1',name:'Trusty Handyman',emoji:'🛠️'}];F.setProjects(ctx.D.projects);ctx.syncCats();
+ ctx.D.recurring=[{id:'c1',kind:'extra',name:'Trusty Handyman',area:'Trusty Handyman',amount:225,currency:'USD',freq:'quincenal',days:[13,30],start:'2026-10-30',end:'2026-11-13',skipped:[]}];
+ ctx.confirmarPago('c1','2026-10-30');assert.equal(ctx.D.income[0].area,'Trusty Handyman');assert.equal(F.area(ctx.D.income[0]),'Trusty Handyman');
+ assert.equal(ctx.negocioIngresos('Trusty Handyman').length,1);
+ ctx.D.trips=[{id:'t1',name:'Quito',city:'Quito',country:'Ecuador',flag:'🇪🇨',lat:-0.18,lon:-78.47,start:'2026-10-01'}];
+ ctx.D.settings.colombiaOn=false;ctx.go('resumen');const h=el('s-resumen').innerHTML;
+ assert(h.includes('map-card')&&h.includes('Viajes · 1 ciudad'));assert(!h.includes('Plan Colombia'));
+ ctx.D.trips=[];ctx.go('resumen');assert(!el('s-resumen').innerHTML.includes('map-card'));
+});
+
 test('map: projection, framing, city lookup with aliases and no accents, online geocoding fallback',async()=>{
  const {ctx}=app();
  const [x,y]=ctx.mapXY(41.88,-87.63);assert(Math.abs(x-184.7)<0.1&&Math.abs(y-96.2)<0.1);assert.equal(ctx.mapXY(0,0).join(),'360,180');assert.equal(ctx.mapXY(90,-180).join(),'0,0');

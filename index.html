@@ -1878,6 +1878,7 @@ function rResumen(){
     +'</div></div>'
    +(typeof inboxBanner==="function"?inboxBanner():"")
    +(typeof ingresosCard==="function"?ingresosCard():"")
+   +(typeof viajesCard==="function"?viajesCard():"")
    +(typeof fijosCard==="function"?fijosCard():"")
    +(typeof setupCard==="function"?setupCard():"")
    +flowSnapshot()
@@ -2853,7 +2854,7 @@ function delRec(coll,id){
 <script>
 /* ═══════════════ BOOT ═══════════════ */
 var publicSession=null;
-var APP_VERSION="2026.10.25.12";   // súbela cada vez que publiques, para saber qué copia tiene el celular
+var APP_VERSION="2026.10.26.13";   // súbela cada vez que publiques, para saber qué copia tiene el celular
 function start(){
   window.__started=true;
   storageOK=probarStorage();

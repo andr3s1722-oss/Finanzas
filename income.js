@@ -30,7 +30,7 @@ function ingresosCard(){
 function confirmarPago(id,dt){
  var r=D.recurring.filter(function(x){return x.id===id;})[0];if(!r)return;
  if(D.income.some(function(i){return i.recurringId===id&&i.recurringDate===dt;}))return;
- D.income.push({id:uid(),date:dt,source:r.name,amount:r.amount,currency:r.currency,area:'Personal',incomeKind:r.kind==='sueldo'?'salary':'extra',recurringId:id,recurringDate:dt});
+ D.income.push({id:uid(),date:dt,source:r.name,amount:r.amount,currency:r.currency,area:r.area||'Personal',incomeKind:r.kind==='sueldo'?'salary':'extra',recurringId:id,recurringDate:dt});
  save();refresh();toast('Ingreso guardado ✓ · si el monto cambió, edítalo en Movimientos');
 }
 function omitirPago(id,dt){
@@ -40,13 +40,14 @@ function omitirPago(id,dt){
 /* Crear o editar una fuente de ingreso */
 function sheetFuente(id,kind,after){
  var r=id?D.recurring.filter(function(x){return x.id===id;})[0]:null;
- _src={kind:r?r.kind:(kind||'sueldo'),freq:r?r.freq:'quincenal',weekday:r?Number(r.weekday):5,after:after||null};
+ _src={area:r&&r.area||'Personal',kind:r?r.kind:(kind||'sueldo'),freq:r?r.freq:'quincenal',weekday:r?Number(r.weekday):5,after:after||null};
  _cur=r?r.currency:monedaInicial();_curManual=true;
  sheet(r?'Editar ingreso':(_src.kind==='sueldo'?'Tu sueldo':'Ingreso extra'),
   '<div class="seg mini" id="src-kind"><button data-k="sueldo" class="'+(_src.kind==='sueldo'?'on':'')+'" onclick="srcKind(\'sueldo\')">Sueldo</button><button data-k="extra" class="'+(_src.kind==='extra'?'on':'')+'" onclick="srcKind(\'extra\')">Ingreso extra</button></div>'
   +fText('f-srcname','Nombre',r?r.name:(_src.kind==='sueldo'?'Quincena':''),'Quincena, sueldo, arriendo, freelance…')
   +fAmount(r?r.amount:null,_cur)
   +'<div class="f"><label>¿Cada cuánto te pagan?</label><div class="seg mini" id="src-freq">'+FREQ.map(function(x){return '<button data-f="'+x[0]+'" class="'+(_src.freq===x[0]?'on':'')+'" onclick="srcFreq(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div></div>'
+  +srcAreaHtml()
   +'<div id="src-days"></div>'
   +fText('f-srcstart','Desde','' ,'' ,'date')
   +'<div class="note">Cuando llegue el día de pago, la app te pregunta si ya te pagaron y lo anotas con un toque. Si el mes es más corto, el día 30 se ajusta al último día del mes.</div>',
@@ -56,6 +57,11 @@ function sheetFuente(id,kind,after){
    srcDays(r);
   });
 }
+function srcAreaHtml(){
+ if(!D.projects.length)return '';
+ return '<div class="f"><label>¿De qué proyecto es?</label><div class="sp-who" id="src-area">'+['Personal'].concat(D.projects.map(function(p){return p.name;})).map(function(n){return '<button class="chip'+(_src.area===n?' on':'')+'" data-a="'+esc(n)+'" onclick="srcArea(this.dataset.a)">'+esc(n)+'</button>';}).join('')+'</div></div>';
+}
+function srcArea(n){_src.area=n;document.querySelectorAll('#src-area button').forEach(function(b){b.classList.toggle('on',b.dataset.a===n);});}
 function srcKind(k){_src.kind=k;document.querySelectorAll('#src-kind button').forEach(function(b){b.classList.toggle('on',b.dataset.k===k);});var n=el('f-srcname');if(n&&(!n.value||/^(Quincena|Sueldo)$/.test(n.value)))n.value=k==='sueldo'?'Quincena':'';}
 function srcFreq(f){_src.freq=f;document.querySelectorAll('#src-freq button').forEach(function(b){b.classList.toggle('on',b.dataset.f===f);});var n=el('f-srcname');if(n&&_src.kind==='sueldo'&&/^(Quincena|Sueldo|Pago semanal)$/.test(n.value))n.value=f==='quincenal'?'Quincena':f==='semanal'?'Pago semanal':'Sueldo';srcDays();}
 function srcDays(r){
@@ -76,7 +82,7 @@ function saveFuente(id){
  else if(_src.freq==='mensual'){day=dd(val('f-srcday'));if(isNaN(day))return toast('El día de pago va de 1 a 31');}
  if(!confirmarMonto(a,_cur,'ingreso'))return;
  if(!r){r={id:uid(),skipped:[]};D.recurring.push(r);}
- r.kind=_src.kind;r.name=name;r.amount=a;r.currency=_cur;r.freq=_src.freq;r.start=start;
+ r.kind=_src.kind;r.area=_src.area;r.name=name;r.amount=a;r.currency=_cur;r.freq=_src.freq;r.start=start;
  delete r.days;delete r.day;delete r.weekday;
  if(days)r.days=days;if(day)r.day=day;if(_src.freq==='semanal')r.weekday=_src.weekday;
  recordarMoneda(_cur);save();closeSheet();

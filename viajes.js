@@ -61,6 +61,13 @@ function rViajes(){
   +(lista||'<div class="empty"><div class="e">🧳</div><div class="t">Aún no tienes viajes</div><div class="s">Crea uno y mueve ahí los gastos del viaje</div></div>')
   +(sin.length?'<div class="sec">Gastos de viaje sin asignar</div><div class="card" style="padding:6px 14px">'+movRows(sin.slice().sort(function(a,b){return b.date.localeCompare(a.date);}).map(function(e){return {k:'e',o:e};}))+'</div>':'');
 }
+/* Resumen: mapa compacto de tus viajes; toca para abrir la sección */
+function viajesCard(){
+ var conPin=(D.trips||[]).filter(function(v){return typeof v.lat==='number';});
+ if(!conPin.length)return '';
+ var pas=viajePasaporte(D.trips);
+ return '<div class="sec">Viajes · '+pas.ciudades+(pas.ciudades===1?' ciudad':' ciudades')+'</div><div class="map-card" role="button" tabindex="0" onclick="go(\'viajes\')">'+mapaSvg(conPin,{aspect:1.75,minW:90,cls:'mapa-grande',etiquetas:true,pin:1.7})+'</div>';
+}
 function verViaje(id){
  curViaje=id;var v=D.trips.filter(function(x){return x.id===id;})[0];
  TITLES.viaje=v?viajeTitulo(v):'Viaje';SUBS.viaje=1;go('viaje');
