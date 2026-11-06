@@ -7,7 +7,7 @@ function workMode(){return Finance.workMode(D);}
 function workHoras(){return workMode()==='horas';}
 function workTips(){return Finance.workTips(D);}
 function rateCur(){return D.settings.rateCurrency==='COP'?'COP':'USD';}
-function tarifaUSD(){return toUSD(D.settings.rate||0,rateCur());}
+function tarifaUSD(){var r=Finance.salaryRates(D);return r.USD+toUSD(r.COP,'COP');}
 function srcFreqText(r){
  if(r.freq==='semanal')return 'cada '+DIAS_SEM[Number(r.weekday)||0].toLowerCase();
  if(r.freq==='quincenal')return 'el '+(r.days&&r.days.length?r.days:[15,30]).join(' y el ');
@@ -100,7 +100,7 @@ function trabajoAjustes(){
  }).join('');
  return '<div class="sec">Tu trabajo e ingresos</div><div class="card">'
   +'<div class="f" style="margin-bottom:8px"><label>¿Cómo te pagan?</label><div class="seg mini" style="margin-bottom:0">'+WORK_MODES.map(function(x){return '<button class="'+(m===x[0]?'on':'')+'" onclick="setWorkMode(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div></div>'
-  +(m==='horas'?'<div class="f"><label>Tarifa por hora</label><div style="display:flex;gap:8px"><input id="set-rate" value="'+(D.settings.rate||0)+'" inputmode="decimal" style="flex:1"><div class="seg mini" style="flex:0 0 118px;margin:0"><button class="'+(rateCur()==='USD'?'on':'')+'" onclick="setRateCur(\'USD\')">USD</button><button class="'+(rateCur()==='COP'?'on':'')+'" onclick="setRateCur(\'COP\')">COP</button></div></div></div>':'')
+  +(m==='horas'?(function(){var r=Finance.salaryRates(D);return '<div class="f"><label>Pago por hora en dólares</label><input id="set-rate-usd" value="'+r.USD+'" inputmode="decimal" placeholder="0"></div><div class="f"><label>Pago por hora en pesos</label><input id="set-rate-cop" value="'+r.COP+'" inputmode="decimal" placeholder="0"></div><div class="note" style="padding:0 0 10px">Puedes usar uno de los dos o ambos. La app mostrará cada parte en su moneda original.</div>';})():'')
   +'<div class="sp-who" style="margin:4px 0 10px"><button class="chip '+(workTips()?'on':'')+'" aria-pressed="'+workTips()+'" onclick="toggleTips()">Recibo propinas</button></div>'
   +(srcs?'<div class="list">'+srcs+'</div>':'<div class="note" style="padding:0 0 8px">Agrega tu sueldo (semanal, quincenal o mensual) y cualquier ingreso extra: te avisamos cuando toca cobrarlo.</div>')
   +'<div class="dash-actions" style="margin:8px 0 0"><button onclick="sheetFuente(null,\'sueldo\')">+ Sueldo</button><button onclick="sheetFuente(null,\'extra\')">+ Ingreso extra</button></div></div>';

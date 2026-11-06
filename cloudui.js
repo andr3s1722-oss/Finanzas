@@ -98,17 +98,22 @@ async function cloudSignOut(){
 }
 TITLES.nube='Nube';SUBS.nube=1;
 
-/* ═══════════ Bandeja de Apple Pay ═══════════ */
+/* ═══════════ Bandeja de Apple Pay, Mensajes y correo ═══════════ */
 async function cloudAuth(){var P=window.PublicSync;return P&&P.getSession?await P.getSession():null;}
 function cloudHeaders(s,json){var h={apikey:CLOUD_KEY};if(s)h.Authorization='Bearer '+s.access_token;if(json)h['Content-Type']='application/json';return h;}
 function inboxLocalDate(iso){var d=new Date(iso);if(isNaN(d))return today();return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());}
 function inboxCand(row){
+ if(row.raw_text){
+  var parsed=Importer.parseMessage(row.raw_text,{today:inboxLocalDate(row.created_at)});
+  if(parsed)return {id:row.id,date:parsed.date,desc:parsed.desc,amount:parsed.amount,kind:parsed.kind,currency:parsed.currency,cat:parsed.kind==='gasto'?(detectarCat(parsed.desc)||'Otros'):'',card:row.card||'',source:row.source||'notification',rawText:row.raw_text};
+  return {id:row.id,date:inboxLocalDate(row.created_at),desc:String(row.raw_text).trim().slice(0,80)||'Notificación',amount:0,kind:'unknown',currency:'USD',cat:'Otros',card:'',source:row.source||'notification',rawText:row.raw_text};
+ }
  var n=Importer.amountNumber(row.amount_raw);
  var desc=String(row.merchant||'').trim()||'Apple Pay';
- return {id:row.id,date:inboxLocalDate(row.created_at),desc:desc,amount:isNaN(n)?0:Math.abs(n),kind:'gasto',currency:row.currency==='COP'?'COP':'USD',cat:detectarCat(desc)||'Otros',card:row.card||''};
+ return {id:row.id,date:inboxLocalDate(row.created_at),desc:desc,amount:isNaN(n)?0:Math.abs(n),kind:'gasto',currency:row.currency==='COP'?'COP':'USD',cat:detectarCat(desc)||'Otros',card:row.card||'',source:'apple-pay'};
 }
 function inboxPending(){
- var saved={};D.expenses.forEach(function(e){if(e.fromInbox)saved[e.fromInbox]=1;});
+ var saved={};[D.expenses,D.income,D.receivables,D.payables].forEach(function(arr){arr.forEach(function(e){if(e.fromInbox)saved[e.fromInbox]=1;});});
  return cloudInbox.filter(function(r){return !saved[r.id];});
 }
 function inboxCount(){return inboxPending().length;}
@@ -126,46 +131,49 @@ async function cloudInboxPull(force){
  var s=await cloudAuth();if(!s)return;
  cloudInboxAt=Date.now();
  try{
-  var r=await cloudRequest(CLOUD_URL+'/rest/v1/inbox?select=id,created_at,amount_raw,merchant,currency,card&order=created_at.asc&limit=100',{headers:cloudHeaders(s)});
+  var r=await cloudRequest(CLOUD_URL+'/rest/v1/inbox?select=id,created_at,amount_raw,merchant,currency,card,source,raw_text&order=created_at.asc&limit=100',{headers:cloudHeaders(s)});
   if(!r.ok||!Array.isArray(r.data))return;
   var before=cloudInbox.map(function(x){return x.id;}).join(',');
   cloudInbox=r.data;
   // ya guardados aquí pero que no se alcanzaron a borrar de la nube: se borran ahora
-  var done=cloudInbox.filter(function(x){return D.expenses.some(function(e){return e.fromInbox===x.id;});}).map(function(x){return x.id;});
+  var done=cloudInbox.filter(function(x){return [D.expenses,D.income,D.receivables,D.payables].some(function(arr){return arr.some(function(e){return e.fromInbox===x.id;});});}).map(function(x){return x.id;});
   if(done.length)await cloudInboxDelete(done);
   if(cloudInbox.map(function(x){return x.id;}).join(',')!==before&&(screen==='inbox'||screen==='resumen'||screen==='mas'))refresh();
  }catch(e){}
 }
 function inboxBanner(){
  var n=inboxCount();if(!n)return '';
- return '<button class="card finance-alert" onclick="go(\'inbox\')" style="margin-bottom:14px"><strong>'+n+(n===1?' pago por confirmar':' pagos por confirmar')+' ↗</strong><span>Llegaron desde Apple Pay. Revísalos y guárdalos.</span></button>';
+ return '<button class="card finance-alert" onclick="go(\'inbox\')" style="margin-bottom:14px"><strong>'+n+(n===1?' movimiento por confirmar':' movimientos por confirmar')+' ↗</strong><span>Llegaron desde Apple Pay, Mensajes o correo. Revísalos antes de añadirlos.</span></button>';
 }
 function rInbox(){
  var cands=Importer.markDuplicates(inboxPending().map(inboxCand),D);
- el('s-inbox').innerHTML='<div class="dash-intro"><div class="eyebrow">Apple Pay</div><h1>Pagos por confirmar.</h1><p>Cada pago que haces con Apple Pay llega aquí. Guárdalo tal cual, corrígelo o descártalo.</p></div>'
+ el('s-inbox').innerHTML='<div class="dash-intro"><div class="eyebrow">Apple Pay · Mensajes · Correo</div><h1>Movimientos por confirmar.</h1><p>La app propone el movimiento, pero tú decides si añadirlo, editarlo, convertirlo en deuda o ignorarlo.</p></div>'
   +(cands.length?'<div class="card" style="padding:6px 14px">'+cands.map(function(it){
     var meta=CATS[it.cat]||CATS.Otros;
-    return '<div class="inbox-row'+(it.dup?' dup':'')+'"><div class="row"><div class="ico" style="background:'+meta.c+'1f">'+meta.e+'</div><div class="row-m"><div class="row-t">'+esc(it.desc)+'</div><div class="row-s">'+dayLabel(it.date)+' · '+esc(it.cat)+(it.card?' · '+esc(it.card):'')+(it.dup?' · posible duplicado':'')+'</div></div><div class="row-v num">−'+fmt(it.amount,it.currency)+'</div></div>'
-     +'<div class="dash-actions" style="margin:0 0 10px"><button onclick="cloudInboxAccept(\''+it.id+'\')">Guardar</button><button onclick="cloudInboxAccept(\''+it.id+'\',true)">Editar</button><button onclick="cloudInboxDiscard(\''+it.id+'\')">Descartar</button></div></div>';
+    var sign=it.kind==='ingreso'?'+':'−',klass=it.kind==='ingreso'?' g':'';
+    return '<div class="inbox-row'+(it.dup?' dup':'')+'"><div class="row"><div class="ico" style="background:'+meta.c+'1f">'+(it.kind==='ingreso'?'💵':meta.e)+'</div><div class="row-m"><div class="row-t">'+esc(it.desc)+'</div><div class="row-s">'+dayLabel(it.date)+' · '+esc(it.kind==='unknown'?'No reconocido':(it.kind==='ingreso'?'Ingreso':it.cat))+(it.card?' · '+esc(it.card):'')+(it.dup?' · posible duplicado':'')+'</div></div><div class="row-v num'+klass+'">'+(it.amount>0?sign+fmt(it.amount,it.currency):'Revisar')+'</div></div>'
+     +'<div class="dash-actions" style="margin:0 0 10px"><button onclick="cloudInboxAccept(\''+it.id+'\')">Añadir</button><button onclick="cloudInboxAccept(\''+it.id+'\',true)">Editar</button><button onclick="cloudInboxDebt(\''+it.id+'\')">Es deuda</button><button onclick="cloudInboxDiscard(\''+it.id+'\')">No</button></div></div>';
    }).join('')+'</div>'
    +'<button class="btn" style="width:100%;margin-top:14px" onclick="cloudInboxAcceptAll()">Guardar todos ('+cands.filter(function(i){return !i.dup;}).length+')</button>'
-   :'<div class="empty"><div class="e">✅</div><div class="t">No hay pagos por confirmar</div><div class="s">Cuando pagues con Apple Pay, aparecen aquí</div></div>')
-  +'<div class="dash-actions"><button onclick="cloudInboxPull(true).then(rInbox)">Actualizar</button><button onclick="go(\'nube\')">Configurar el atajo</button></div>';
+   :'<div class="empty"><div class="e">✅</div><div class="t">No hay movimientos por confirmar</div><div class="s">Los avisos bancarios aparecerán aquí</div></div>')
+  +'<div class="dash-actions"><button onclick="cloudInboxPull(true).then(rInbox)">Actualizar</button><button onclick="go(\'nube\')">Configurar automatizaciones</button></div>';
 }
 function inboxSave(it){
- var existing=D.expenses.filter(function(e){return e.fromInbox===it.id;})[0];
+ var arr=it.kind==='ingreso'?D.income:D.expenses;
+ var existing=arr.filter(function(e){return e.fromInbox===it.id;})[0];
  if(existing)return existing;
- var e={id:uid(),date:it.date,desc:it.desc,amount:it.amount,currency:it.currency,category:it.cat,spread:1,fromInbox:it.id};
- D.expenses.push(e);return e;
+ var e=it.kind==='ingreso'?{id:uid(),date:it.date,source:it.desc,amount:it.amount,currency:it.currency,area:'Personal',fromInbox:it.id}:{id:uid(),date:it.date,desc:it.desc,amount:it.amount,currency:it.currency,category:it.cat,spread:1,fromInbox:it.id};
+ arr.push(e);return e;
 }
 async function cloudInboxAccept(id,thenEdit){
  var row=cloudInbox.filter(function(x){return x.id===id;})[0];if(!row)return;
  var it=inboxCand(row);
  if(!(it.amount>0))return toast('No pude leer el monto de este pago');
- if(!D.expenses.some(function(e){return e.fromInbox===id;})&&!confirmarMonto(it.amount,it.currency,'gasto'))return;
+ if(it.kind==='unknown')return toast('No pude leer este aviso. Usa “Es deuda” o descártalo.');
+ if(![D.expenses,D.income].some(function(a){return a.some(function(e){return e.fromInbox===id;});})&&!confirmarMonto(it.amount,it.currency,it.kind))return;
  var e=inboxSave(it);save();
  await cloudInboxDelete([id]);
- if(thenEdit){rInbox();editExp(e.id);return;}
+ if(thenEdit){rInbox();if(it.kind==='ingreso')editInc(e.id);else editExp(e.id);return;}
  toast('Guardado ✓');rInbox();
 }
 async function cloudInboxAcceptAll(){
@@ -178,8 +186,24 @@ async function cloudInboxAcceptAll(){
  toast(cands.length+(cands.length===1?' pago guardado ✓':' pagos guardados ✓'));rInbox();
 }
 async function cloudInboxDiscard(id){
- if(!confirm('¿Descartar este pago? No se guardará.'))return;
+ if(!confirm('¿Ignorar este movimiento? No se guardará.'))return;
  await cloudInboxDelete([id]);rInbox();
+}
+var cloudDebtKind='cobrar';
+function cloudDebtSet(k){cloudDebtKind=k;var a=el('debt-cobrar'),b=el('debt-pagar');if(a&&b){a.classList.toggle('on',k==='cobrar');b.classList.toggle('on',k==='pagar');}}
+function cloudInboxDebt(id){
+ var row=cloudInbox.filter(function(x){return x.id===id;})[0];if(!row)return;var it=inboxCand(row);cloudDebtKind='cobrar';_cur=it.currency;
+ sheet('Convertir en deuda',fAmount(it.amount||null,it.currency)
+  +'<div class="seg mini"><button id="debt-cobrar" class="on" onclick="cloudDebtSet(\'cobrar\')">Me deben</button><button id="debt-pagar" onclick="cloudDebtSet(\'pagar\')">Yo debo</button></div>'
+  +fText('f-who','Persona','')+fText('f-con','Concepto',it.desc)+fText('f-venc','Cuándo (opcional)','')
+  +'<div class="note">El aviso quedará ligado a esta deuda y no se registrará como gasto o ingreso.</div>',
+  '<button class="btn" onclick="cloudInboxDebtSave(\''+id+'\')">Guardar deuda</button><button class="btn ghost" onclick="closeSheet()">Cancelar</button>');
+}
+async function cloudInboxDebtSave(id){
+ var a=num('f-amount'),who=val('f-who');if(!(a>0)||!who)return toast('Falta monto o persona');
+ var arr=cloudDebtKind==='cobrar'?D.receivables:D.payables;
+ arr.push({id:uid(),debtor:who,concept:val('f-con'),amount:a,currency:_cur,vence:val('f-venc')||undefined,fromInbox:id});
+ save();closeSheet();await cloudInboxDelete([id]);toast('Deuda guardada ✓');rInbox();
 }
 /* llave del atajo */
 async function cloudMakeToken(){
@@ -223,7 +247,9 @@ function cloudApplePayCard(){
    +'<li>Cuerpo de la solicitud: <b>JSON</b>, con estos campos de tipo <b>Texto</b>: <code>token</code> = tu llave, <code>amount</code> = la variable <b>Cantidad</b>, <code>merchant</code> = la variable <b>Comerciante</b>, <code>currency</code> = <code>USD</code>. Opcional: <code>card</code> = la variable de la tarjeta.</li></ol>'
    +'<p class="note" style="padding-bottom:0">Los nombres de las variables cambian un poco según la versión de iOS. Usa exactamente esos nombres de campo en inglés: el servidor los exige.</p>'
   :'<p class="note" style="padding-top:0">Cada pago con Apple Pay llega a tu nube y lo confirmas aquí en la app. Primero crea la llave del atajo.</p>';
- return '<div class="sec">Apple Pay</div><div class="card">'+steps
+ var nurl=CLOUD_URL+'/rest/v1/rpc/capture_notification';
+ var notify=cloudToken?'<details style="margin-top:16px"><summary style="cursor:pointer;font-weight:700">Conectar Mensajes o Mail</summary><div class="dash-actions" style="margin:12px 0"><button onclick="cloudCopy(\''+nurl+'\',\'Dirección de avisos\')">Copiar dirección de avisos</button></div><ol class="imp-steps"><li>En <b>Atajos → Automatización → +</b>, elige <b>Mensaje</b> o <b>Correo</b> y selecciona los remitentes de tus bancos. Usa <b>Ejecutar inmediatamente</b>.</li><li>Añade <b>Obtener contenido de la URL</b>, método POST, con la dirección de avisos.</li><li>Usa los mismos encabezados <code>apikey</code> y <code>Content-Type: application/json</code>.</li><li>Cuerpo JSON: <code>token</code> = tu llave, <code>message</code> = el contenido del mensaje/correo y <code>source</code> = <code>messages</code> o <code>mail</code>.</li></ol><p class="note">iPhone no permite que una página lea tus mensajes directamente. La automatización solo reenvía a tu nube el aviso bancario que tú selecciones.</p></details>':'';
+ return '<div class="sec">Apple Pay, Mensajes y correo</div><div class="card">'+steps+notify
   +'<div class="dash-actions" style="margin:12px 0 0"><button onclick="cloudMakeToken()">'+(cloudToken?'Crear otra llave':'Crear llave del atajo')+'</button><button onclick="cloudRevokeToken()">Revocar</button><button onclick="go(\'inbox\')">Ver pendientes'+(inboxCount()?' ('+inboxCount()+')':'')+'</button></div></div>';
 }
 TITLES.inbox='Pendientes';SUBS.inbox=1;
