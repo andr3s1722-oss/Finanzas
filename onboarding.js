@@ -1,7 +1,7 @@
 /* Primeros pasos, ayuda dentro de la app y perfil de este dispositivo (nombre y clave propios). */
 var CHECK_ITEMS=[
  {id:'pago',t:'Cómo te pagan',h:'Sueldo semanal, quincenal o mensual, por horas… para recordarte cuándo cobras.',done:function(){return workMode()!=='ninguno'||D.recurring.length>0;},act:"wizardStart()"},
- {id:'cuentas',t:'Tus cuentas',h:'Cuánto tienes en el banco, Nequi o efectivo.',done:function(){return D.assets.some(function(a){return a.type==='Liquidez';});},act:"go('cash')"},
+ {id:'cuentas',t:'Tus cuentas',h:'Cuánto tienes en el banco, Nequi o efectivo.',done:function(){return D.assets.some(function(a){return a.type==='Liquidez'&&(!a.systemCash||(+a.value||0)!==0);});},act:"go('cash')"},
  {id:'gasto',t:'Anota tu primer gasto',h:'Toca el + y registra lo que gastaste hoy.',done:function(){return D.expenses.length>0;},act:"openAdd('gasto')"},
  {id:'fijos',t:'Tus gastos fijos',h:'Arriendo, servicios, carro, suscripciones: te avisamos cuándo pagar.',done:function(){return D.bills.length>0||D.subscriptions.length>0;},act:"go('fijos')"},
  {id:'presupuesto',t:'Pon tu presupuesto',h:'Cuánto quieres gastar: la app te dice cuánto te queda cada semana.',done:function(){return Finance.weeklyBudget(D)>0;},act:"sheetPresupuesto()"},

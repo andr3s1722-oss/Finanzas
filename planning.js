@@ -5,13 +5,16 @@ function storeArea(o){var a=val('f-area');if(a)o.area=a;else delete o.area;}
 function areaChips(value,action){return '<div class="chips">'+['Todos'].concat(Finance.areas).map(function(a){return '<button class="chip '+(a===value?'on':'')+'" aria-pressed="'+(a===value)+'" onclick="'+action+'(\''+a+'\')">'+a+'</button>';}).join('')+'</div>';}
 function filterArea(a){areaFilter=a;go('movs');}
 function filterWeek(a){weekFilter=a;rSemanal();}
-function planningLinks(){return '<div class="dash-actions"><button onclick="go(\'semanal\')">Flujo ↗</button><button onclick="go(\'split\')">Split ↗</button>'+(Finance.colombiaOn(D)?'<button onclick="go(\'colombia\')">Plan Colombia ↗</button>':'')+'<button onclick="go(\'alertas\')">Alertas · '+Finance.alerts(D,today()).length+'</button></div>';}
+function planningLinks(){return '<div class="dash-actions"><button class="quick-notice-link" onclick="quickNotice()">📋 Pegar aviso</button><button onclick="go(\'semanal\')">Flujo ↗</button><button onclick="go(\'split\')">Split ↗</button>'+(Finance.colombiaOn(D)?'<button onclick="go(\'colombia\')">Plan Colombia ↗</button>':'')+'<button onclick="go(\'alertas\')">Alertas · '+Finance.alerts(D,today()).length+'</button></div>';}
+function isCashAsset(a){return !!a&&a.type==='Liquidez'&&/^(efectivo|cash)$/i.test(String(a.name||'').trim());}
+function cashAsset(currency){return D.assets.filter(function(a){return isCashAsset(a)&&(a.currency||'USD')===currency;})[0];}
+function openCashAccount(id){var a=D.assets.filter(function(x){return x.id===id;})[0];if(!a)return;if(isCashAsset(a))adjustCash(a.currency||'USD');else editAsset(id);}
 function cashOverview(){
  var cuentas=D.assets.filter(function(a){return a.type==='Liquidez';});
  if(!cuentas.length)return '<div class="sec">Cuentas bancarias / Cash<button onclick="go(\'cash\')">Agregar ↗</button></div>';
  var total=sumUSD(cuentas,function(a){return a.value;});
  return '<div class="sec">Cuentas bancarias / Cash<button onclick="go(\'cash\')">Ver todas · '+money(total)+' ↗</button></div><div class="cash-overview-grid">'
-  +cuentas.map(function(a){return '<button class="cash-mini" onclick="editAsset(\''+a.id+'\')"><span class="cash-mini-top"><b>'+(/nu/i.test(a.name)?'NU':'$')+'</b><i>Editar ↗</i></span><strong>'+fmt(a.value,a.currency)+'</strong><span>'+esc(a.name.replace(/ · Cuenta bancaria| · Ahorro/g,''))+'</span></button>';}).join('')+'</div>';
+  +cuentas.map(function(a){return '<button class="cash-mini" onclick="openCashAccount(\''+a.id+'\')"><span class="cash-mini-top"><b>'+(/nu/i.test(a.name)?'NU':isCashAsset(a)?'💵':'$')+'</b><i>'+(isCashAsset(a)?'Sumar ↗':'Editar ↗')+'</i></span><strong>'+fmt(a.value,a.currency)+'</strong><span>'+esc(a.name.replace(/ · Cuenta bancaria| · Ahorro/g,''))+' · '+(a.currency||'USD')+'</span></button>';}).join('')+'</div>';
 }
 function areaOverview(){
  var md=monthData(curMonth);
@@ -25,9 +28,35 @@ function rCash(){
  var cuentas=D.assets.filter(function(a){return a.type==='Liquidez';});
  var total=sumUSD(cuentas,function(a){return a.value;});
  el('s-cash').innerHTML='<div class="cash-hero"><div><div class="eyebrow">Dinero disponible</div><h1>'+money(total)+'</h1><p>≈ '+mask('$'+Math.round(total*fx()).toLocaleString('es-CO'))+' COP con la TRM actual</p></div><div class="cash-mark">$</div></div>'
+  +'<div class="sec">Efectivo</div><div class="cash-wallet">'
+  +['COP','USD'].map(function(cur){var a=cashAsset(cur);return '<div class="cash-wallet-row"><div><span>Efectivo en '+(cur==='COP'?'pesos':'dólares')+'</span><strong class="num">'+fmt(a?a.value:0,cur)+'</strong></div><button onclick="adjustCash(\''+cur+'\')">Sumar o restar</button></div>';}).join('')+'</div>'
   +'<div class="sec">Tus cuentas<button onclick="editAsset()">+ Agregar</button></div>'
-  +'<div class="cash-grid">'+(cuentas.length?cuentas.map(function(a){var usd=toUSD(a.value,a.currency);return '<button class="cash-account" onclick="editAsset(\''+a.id+'\')"><div class="cash-bank"><span class="cash-icon">'+(/nu/i.test(a.name)?'NU':'$')+'</span><span>Editar ↗</span></div><strong>'+fmt(a.value,a.currency)+'</strong><h2>'+esc(a.name.replace(/ · Cuenta bancaria| · Ahorro/g,''))+'</h2><p>'+(a.currency==='COP'?money(usd)+' USD':mask('$'+Math.round(a.value*fx()).toLocaleString('es-CO'))+' COP')+'</p></button>';}).join(''):'<div class="card"><strong>Aún no tienes cuentas</strong><p class="note">Agrega una cuenta para ver tu dinero disponible aquí.</p></div>')+'</div>'
-  +'<div class="note">Toca cualquier cuenta para cambiar el saldo. Cash forma parte de tu patrimonio y de la liquidez del Plan Colombia.</div>';
+  +'<div class="cash-grid">'+(cuentas.filter(function(a){return !isCashAsset(a);}).length?cuentas.filter(function(a){return !isCashAsset(a);}).map(function(a){var usd=toUSD(a.value,a.currency);return '<button class="cash-account" onclick="openCashAccount(\''+a.id+'\')"><div class="cash-bank"><span class="cash-icon">'+(/nu/i.test(a.name)?'NU':'$')+'</span><span>Editar ↗</span></div><strong>'+fmt(a.value,a.currency)+'</strong><h2>'+esc(a.name.replace(/ · Cuenta bancaria| · Ahorro/g,''))+'</h2><p>'+(a.currency==='COP'?money(usd)+' USD':mask('$'+Math.round(a.value*fx()).toLocaleString('es-CO'))+' COP')+'</p></button>';}).join(''):'<div class="card"><strong>Agrega tus cuentas bancarias</strong><p class="note">Efectivo ya está creado arriba en pesos y dólares.</p></div>')+'</div>'
+  +'<div class="note">Efectivo y cuentas bancarias forman parte de tu patrimonio. En Efectivo puedes sumar, restar o fijar el saldo sin hacer cálculos.</div>';
+}
+var cashMode='add';
+function adjustCash(currency){
+ var a=cashAsset(currency);if(!a){a={id:uid(),name:'Efectivo',type:'Liquidez',value:0,currency:currency,systemCash:true};D.assets.push(a);save();}
+ cashMode='add';_cur=currency;
+ sheet('Efectivo en '+(currency==='COP'?'pesos':'dólares'),
+  '<div class="cash-current"><span>Saldo actual</span><strong class="num">'+fmt(a.value||0,currency)+'</strong></div>'
+  +'<div class="seg mini" id="cash-mode"><button class="on" data-mode="add" onclick="setCashMode(\'add\')">Sumar</button><button data-mode="subtract" onclick="setCashMode(\'subtract\')">Restar</button><button data-mode="set" onclick="setCashMode(\'set\')">Fijar saldo</button></div>'
+  +'<div class="f"><label id="cash-amount-label">Cuánto vas a sumar ('+currency+')</label><input id="f-cash-amount" inputmode="decimal" placeholder="0" autofocus></div>'
+  +'<div class="note" id="cash-help">Se añadirá al efectivo que ya tienes.</div>',
+  '<button class="btn" onclick="saveCashAdjustment(\''+currency+'\')">Guardar</button><button class="btn ghost" onclick="closeSheet()">Cancelar</button>');
+}
+function setCashMode(mode){
+ cashMode=mode;var seg=el('cash-mode');if(seg)Array.prototype.forEach.call(seg.querySelectorAll('button'),function(b){b.classList.toggle('on',b.dataset.mode===mode);});
+ var label=el('cash-amount-label'),help=el('cash-help');
+ if(label)label.textContent=(mode==='add'?'Cuánto vas a sumar':mode==='subtract'?'Cuánto vas a restar':'Nuevo saldo')+' ('+_cur+')';
+ if(help)help.textContent=mode==='add'?'Se añadirá al efectivo que ya tienes.':mode==='subtract'?'Se descontará del efectivo que ya tienes.':'Reemplazará el saldo actual por este valor.';
+}
+function saveCashAdjustment(currency){
+ var amount=num('f-cash-amount');if(amount==null||amount<0)return toast('Escribe un monto válido');
+ var a=cashAsset(currency);if(!a){a={id:uid(),name:'Efectivo',type:'Liquidez',value:0,currency:currency,systemCash:true};D.assets.push(a);}
+ var current=+a.value||0,next=cashMode==='set'?amount:cashMode==='subtract'?current-amount:current+amount;
+ if(next<0&&!confirm('El efectivo quedará negativo. ¿Guardar de todos modos?'))return;
+ a.value=Math.round(next*100)/100;save();closeSheet();refresh();toast('Efectivo actualizado ✓');
 }
 function rAlertas(){el('s-alertas').innerHTML='<div class="dash-intro"><div class="eyebrow">Control financiero</div><h1>Lo que merece atención</h1><p>Se actualiza al registrar movimientos. Avisos dentro de la app.</p></div>'+alertCards()+'<div class="note">Para avisos de deudas usa una fecha AAAA-MM-DD en “Cuándo”. Los vencimientos escritos como “fin de mes” se conservan, pero no generan un aviso por fecha.</div>';}
 function colombiaField(key,label,value){return fText('co-'+key,label,value==null?'':value,'0','text','inputmode="decimal"');}

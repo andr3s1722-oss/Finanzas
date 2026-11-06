@@ -498,6 +498,7 @@ function sDel(k){ try{ localStorage.removeItem(k); }catch(e){ delete MEM[k]; } }
 function sKeys(){ try{ return Object.keys(localStorage); }catch(e){ return Object.keys(MEM); } }
 function ssGet(k){ try{ return sessionStorage.getItem(k); }catch(e){ return null; } }
 function ssSet(k,v){ try{ sessionStorage.setItem(k,v); }catch(e){} }
+movView=sGet("finanzas_vista_movimientos")==="columns"?"columns":"list";
 
 function normalize(d){
   d.expenses=d.expenses||[]; d.income=d.income||[]; d.receivables=d.receivables||[];
@@ -520,6 +521,14 @@ function normalize(d){
     d.investments=d.investments.filter(function(i){return i.type!=="Vehículo"&&i.type!=="Liquidez";});
     move.forEach(function(m){d.assets.push({id:uid(),name:m.name,type:m.type,value:m.currentValue,currency:m.currency});});
   }
+  // Efectivo es una cuenta básica, no algo que el usuario deba crear a mano.
+  // Conserva cualquier casilla existente y completa únicamente la moneda que falte.
+  ["COP","USD"].forEach(function(currency){
+    var cash=d.assets.some(function(a){
+      return a.type==="Liquidez" && /^(efectivo|cash)$/i.test(String(a.name||"").trim()) && (a.currency||"USD")===currency;
+    });
+    if(!cash)d.assets.push({id:uid(),name:"Efectivo",type:"Liquidez",value:0,currency:currency,systemCash:true});
+  });
   ["expenses","income","receivables","payables","cards","investments","assets","cafe_hours","prices","solana","subscriptions","people","splits","goals","fixed","recurring","projects","bills","trips","settlements"].forEach(function(k){
     d[k].forEach(function(o){if(!o.id)o.id=uid();});
   });
@@ -827,14 +836,15 @@ function allMonths(){
   return Object.keys(s).sort();
 }
 function setExpenseCurrency(c){expenseCurrencyView=c;movLimit=80;if(screen==="movs")rMovs();else rResumen();}
+function setMovView(v){movView=v;movLimit=80;try{sSet("finanzas_vista_movimientos",v);}catch(e){}rMovs();}
 function expenseCurrencyButtons(){return '<div class="seg mini" style="margin-bottom:12px">'+[['BOTH','Ambas'],['COP','Pesos'],['USD','Dólares']].map(function(x){return '<button class="'+(expenseCurrencyView===x[0]?'on':'')+'" onclick="setExpenseCurrency(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div>';}
 function nativeExpenseTotals(list){return list.reduce(function(t,e){t[e.currency==='COP'?'COP':'USD']+=Number(e.amount)||0;return t;},{COP:0,USD:0});}
 function expenseColumns(items,total){
  var top=items.slice(0,6),mx=Math.max.apply(null,top.map(function(x){return x.v;}).concat([1]));
  var aria=top.map(function(it){return it.n+' '+Math.round(it.v/Math.max(total,1)*100)+' por ciento';}).join(', ');
  return '<div class="card viz-card" role="img" aria-label="Gastos por categoría: '+esc(aria)+'">'
-  +'<div class="viz-columns">'+top.map(function(it){return '<div class="viz-col"><span class="viz-pct num">'+Math.round(it.v/Math.max(total,1)*100)+'%</span><i class="viz-bar" style="height:'+Math.max(10,it.v/mx*116)+'px;background:'+it.c+'"></i><span class="viz-emoji" aria-hidden="true">'+it.e+'</span></div>';}).join('')+'</div>'
-  +'<div class="viz-legend">'+top.map(function(it){return '<div><span class="viz-dot" style="background:'+it.c+'"></span><b>'+esc(it.n)+'</b><em class="num">'+money(it.v)+'</em></div>';}).join('')+'</div></div>';
+  +'<div class="viz-title"><b>Gastos por categoría</b><span>'+top.length+' categorías principales</span></div>'
+  +'<div class="viz-vertical">'+top.map(function(it){var pct=Math.round(it.v/Math.max(total,1)*100);return '<div class="viz-vrow"><div class="viz-vlabel"><span><i aria-hidden="true">'+it.e+'</i>'+esc(it.n)+'</span><b class="num">'+money(it.v)+' · '+pct+'%</b></div><div class="viz-vtrack"><i style="width:'+Math.max(4,it.v/mx*100).toFixed(1)+'%;background:'+it.c+'"></i></div></div>';}).join('')+'</div></div>';
 }
 function spendingOverview(items,total){
  if(!chartsVisible) return '';
@@ -2051,7 +2061,7 @@ function rMovs(){
        return '<button class="'+(movFilter===p[0]?"on":"")+'" onclick="movFilter=\''+p[0]+'\';movLimit=80;rMovs()">'+p[1]+'</button>';}).join("")
    +'</div>'
    +expenseCurrencyButtons()
-   +'<div class="seg mini" style="margin-bottom:14px"><button class="'+(movView==='list'?'on':'')+'" onclick="movView=\'list\';movLimit=80;rMovs()">Lista</button><button class="'+(movView==='columns'?'on':'')+'" onclick="movView=\'columns\';movLimit=80;rMovs()">Columnas</button></div>'
+   +'<div class="seg mini" style="margin-bottom:14px"><button class="'+(movView==='list'?'on':'')+'" onclick="setMovView(\'list\')">Lista</button><button class="'+(movView==='columns'?'on':'')+'" onclick="setMovView(\'columns\')">Gráfica vertical</button></div>'
    +'<div class="grid2" style="margin-bottom:6px">'
      +'<div class="tile"><div class="l">Ingresos</div><div class="v num g">'+money(tI)+'</div></div>'
      +'<div class="tile"><div class="l">Gastos</div><div class="v num r">'+(expenseCurrencyView==='COP'?fmt(nativeMov.COP,'COP'):expenseCurrencyView==='USD'?fmt(nativeMov.USD,'USD'):money(tE))+'</div></div>'
@@ -2199,6 +2209,7 @@ function rMas(){
     +mi("➕",T.lima,"Agregar proyecto o negocio","","sheetProyecto()")
     +mi("📈",T.blu,"Precios",D.prices.length+"","go('precios')")
     +'</div><div class="sec">Control</div><div class="menu">'
+    +mi("📋",T.grn,"Pegar aviso del banco","Copia, pega y revisa","quickNotice()")
     +mi("📆",T.blu,"Flujo · semana y mes","","go('semanal')")
     +mi("👥",T.pur,"Split · gastos compartidos",(function(){var t=Split.totalsUSD(D,fx());return Math.abs(t.net)<0.005?"al día":(t.net>0?"+":"")+money(t.net);})(),"go('split')")
     +mi("📄",T.grn,"Contratos e ingresos",D.recurring.length+"","go('ingresos')")
@@ -2709,7 +2720,6 @@ function collectDebt(id){
   collectAdjusted=false;
   var liquid=D.assets.filter(function(a){return a.type==="Liquidez";});
   var opts=liquid.map(function(a){return '<option value="'+esc(a.id)+'">'+esc(a.name)+' · '+fmt(a.value||0,a.currency||"USD")+'</option>';}).join("");
-  opts+='<option value="cash">Efectivo</option>';
   sheet("Registrar cobro",
     '<div class="card" style="margin-bottom:12px"><b>'+esc(r.debtor)+'</b><div class="note" style="padding:4px 0 0">'+esc(r.concept||"Deuda")+' · '+fmt(r.amount,r.currency)+'</div></div>'
     +'<div class="f"><label>¿Dónde te pagaron?</label><select id="f-dest" onchange="collectDebtDestination(\''+id+'\')">'+opts+'</select></div>'
@@ -2729,7 +2739,7 @@ function collectDifferent(id){
 }
 function collectDebtDestination(id){
   var r=D.receivables.filter(function(x){return x.id===id;})[0],dest=el("f-dest");if(!r||!dest)return;
-  var a=dest.value==="cash"?null:D.assets.filter(function(x){return x.id===dest.value;})[0];
+  var a=D.assets.filter(function(x){return x.id===dest.value;})[0];
   var cur=a?(a.currency||"USD"):r.currency;
   _cur=cur;var amount=r.amount;if(cur!==r.currency)amount=r.currency==="USD"?r.amount*fx():r.amount/fx();
   var input=el("f-amount");if(input)input.value=Math.round(amount*100)/100;
@@ -2742,7 +2752,7 @@ function saveCollectedDebt(id){
   var debtPaid=partial?num("f-debt-paid"):r.amount;if(!(debtPaid>0))return toast("Indica cuánto de la deuda quedó pagado");
   debtPaid=Math.min(debtPaid,r.amount);
   var remaining=Math.round((r.amount-debtPaid)*100)/100;
-  var a=destId==="cash"?null:D.assets.filter(function(x){return x.id===destId;})[0];
+  var a=D.assets.filter(function(x){return x.id===destId;})[0];
   if(!a){
     a=D.assets.filter(function(x){return x.type==="Liquidez"&&x.name==="Efectivo"&&x.currency===_cur;})[0];
     if(!a){a={id:uid(),name:"Efectivo",type:"Liquidez",value:0,currency:_cur};D.assets.push(a);}
@@ -2925,7 +2935,7 @@ function delRec(coll,id){
 <script>
 /* ═══════════════ BOOT ═══════════════ */
 var publicSession=null;
-var APP_VERSION="2026.11.05.1";   // súbela cada vez que publiques, para saber qué copia tiene el celular
+var APP_VERSION="2026.11.06.2";   // súbela cada vez que publiques, para saber qué copia tiene el celular
 function start(){
   window.__started=true;
   storageOK=probarStorage();

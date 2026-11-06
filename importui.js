@@ -1,5 +1,5 @@
 /* Importar movimientos (mensajes pegados o CSV), atajo de Apple Pay y exportación CSV. */
-var impItems=[],impRows=null,impOpts={currency:monedaInicial(),dateOrder:'auto',expensesPositive:false},impMsgCur='auto',impNote='';
+var impItems=[],impRows=null,impOpts={currency:monedaInicial(),dateOrder:'auto',expensesPositive:false},impMsgCur='auto',impNote='',quickNoticeItem=null;
 function impSite(){return location.origin+location.pathname;}
 function impDownload(name,text,type){
  try{
@@ -74,14 +74,71 @@ function impCopyLink(){
  var u=impSite()+'#add?monto=MONTO&desc=COMERCIO&moneda=USD';
  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(u).then(function(){toast('Enlace copiado ✓');});else toast(u);
 }
+/* Camino corto: copiar el aviso del banco y tocar un botón dentro de Finanzas. */
+async function quickNotice(){
+ var text='';
+ try{if(navigator.clipboard&&navigator.clipboard.readText)text=await navigator.clipboard.readText();}catch(e){}
+ var item=Importer.parseMessage(text,{today:today()});
+ if(item)return quickNoticeReview(item);
+ quickNoticePaste(text);
+}
+function quickNoticePaste(text){
+ sheet('Pegar aviso del banco',
+  '<div class="quick-notice-intro"><span>1</span><div><b>Copia la notificación</b><p>Desde Mensajes, correo o la app de tu banco.</p></div></div>'
+  +'<div class="quick-notice-intro"><span>2</span><div><b>Pégala aquí</b><p>La revisas antes de añadirla.</p></div></div>'
+  +'<div class="f"><textarea id="quick-notice-text" rows="5" placeholder="Pagaste $15.000 en TIENDA D1" style="width:100%;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:14px">'+esc(text||'')+'</textarea></div>',
+  '<button class="btn" onclick="quickNoticeRead()">Leer aviso</button><button class="btn ghost" onclick="closeSheet()">Cancelar</button>');
+}
+function quickNoticeRead(){
+ var item=Importer.parseMessage(val('quick-notice-text'),{today:today()});
+ if(!item)return toast('No encontré el monto. Pega el aviso completo.');
+ quickNoticeReview(item);
+}
+function quickNoticeReview(item){
+ quickNoticeItem=Importer.markDuplicates([item],D)[0];
+ quickNoticeItem.cat=quickNoticeItem.kind==='gasto'?(detectarCat(quickNoticeItem.desc)||'Otros'):'';
+ _cur=quickNoticeItem.currency||'USD';
+ sheet('Revisar movimiento',
+  (quickNoticeItem.dup?'<div class="warn"><b>Posible duplicado.</b> Ya existe un movimiento parecido.</div>':'')
+  +'<div class="seg mini" id="quick-kind"><button data-kind="gasto" class="'+(quickNoticeItem.kind==='gasto'?'on':'')+'" onclick="quickNoticeKind(\'gasto\')">Gasto</button><button data-kind="ingreso" class="'+(quickNoticeItem.kind==='ingreso'?'on':'')+'" onclick="quickNoticeKind(\'ingreso\')">Ingreso</button></div>'
+  +fAmount(quickNoticeItem.amount,_cur)+fText('quick-desc','Descripción',quickNoticeItem.desc,'Comercio o concepto')
+  +'<div class="f" id="quick-cat-wrap"'+(quickNoticeItem.kind==='ingreso'?' style="display:none"':'')+'><label>Categoría</label><select id="quick-cat">'+Object.keys(CATS).map(function(c){return '<option'+(c===quickNoticeItem.cat?' selected':'')+'>'+esc(c)+'</option>';}).join('')+'</select></div>'
+  +fText('quick-date','Fecha',quickNoticeItem.date||today(),'','date')
+  +'<div class="note">Puedes corregir cualquier dato antes de añadirlo.</div>',
+  '<button class="btn" onclick="quickNoticeSave()">Añadir</button>'+(quickNoticeItem.kind==='gasto'?'<button class="btn ghost" onclick="quickNoticeDebt()">Me lo deben</button>':'')+'<button class="btn ghost" onclick="closeSheet()">No, descartar</button>');
+}
+function quickNoticeKind(kind){
+ quickNoticeItem.kind=kind;var seg=el('quick-kind');if(seg)Array.prototype.forEach.call(seg.querySelectorAll('button'),function(b){b.classList.toggle('on',b.dataset.kind===kind);});
+ var cat=el('quick-cat-wrap');if(cat)cat.style.display=kind==='gasto'?'block':'none';
+}
+function quickNoticeValues(){return {kind:quickNoticeItem.kind,amount:num('f-amount'),currency:_cur,desc:val('quick-desc'),date:val('quick-date')||today(),cat:el('quick-cat')?val('quick-cat'):'Otros'};}
+function quickNoticeSave(){
+ var x=quickNoticeValues();if(!(x.amount>0)||!x.desc)return toast('Revisa el monto y la descripción');
+ if(!confirmarMonto(x.amount,x.currency,x.kind))return;
+ if(x.kind==='gasto')D.expenses.push({id:uid(),date:x.date,desc:x.desc,amount:x.amount,currency:x.currency,category:x.cat||'Otros',spread:1});
+ else D.income.push({id:uid(),date:x.date,source:x.desc,amount:x.amount,currency:x.currency});
+ save();closeSheet();refresh();toast('Movimiento añadido ✓');
+}
+function quickNoticeDebt(){
+ var x=quickNoticeValues();if(!(x.amount>0)||!x.desc)return toast('Revisa el monto y la descripción');
+ quickNoticeItem=Object.assign(quickNoticeItem,x);
+ sheet('¿Quién te lo debe?','<div class="card quick-debt-summary"><b>'+esc(x.desc)+'</b><strong class="num">'+fmt(x.amount,x.currency)+'</strong></div>'+fText('quick-debtor','Persona','','Nombre')+'<div class="note">Se guardará el gasto y también una cuenta por cobrar a esa persona.</div>','<button class="btn" onclick="quickNoticeSaveDebt()">Guardar deuda</button><button class="btn ghost" onclick="closeSheet()">Cancelar</button>');
+}
+function quickNoticeSaveDebt(){
+ var who=val('quick-debtor'),x=quickNoticeItem;if(!who)return toast('Escribe quién te lo debe');
+ D.expenses.push({id:uid(),date:x.date,desc:x.desc,amount:x.amount,currency:x.currency,category:x.cat||'Otros',spread:1});
+ D.receivables.push({id:uid(),debtor:who,concept:x.desc,amount:x.amount,currency:x.currency});
+ save();closeSheet();refresh();toast('Gasto y deuda guardados ✓');
+}
 function rImportar(){
  var last=D.settings.lastImport?D.expenses.concat(D.income).filter(function(o){return o.importBatch===D.settings.lastImport;}).length:0;
  el('s-importar').innerHTML=
-  '<div class="dash-intro"><div class="eyebrow">Sin escribir uno por uno</div><h1>Importar movimientos.</h1><p>Pega el mensaje de tu banco o sube el extracto en CSV. Revisas, corriges y listo. Lo que ya está registrado se marca como duplicado.</p></div>'
-  +'<div class="sec">Pegar mensajes (Nequi, Nu, bancos)</div><div class="card">'
+  '<div class="dash-intro"><div class="eyebrow">Sin escribir uno por uno</div><h1>Importar movimientos.</h1><p>La forma fácil es copiar un aviso del banco y tocar Pegar aviso. Para muchos movimientos también puedes usar un extracto CSV.</p></div>'
+  +'<button class="btn quick-notice-main" onclick="quickNotice()">📋 Pegar un aviso del banco</button>'
+  +'<details class="more"><summary>Pegar varios avisos <span>Nequi, Nu y bancos</span></summary><div class="card">'
   +'<div class="f"><textarea id="imp-text" rows="4" placeholder="Pagaste $15.000 en TIENDA D1&#10;Chase: $16.56 transaction with WENDYS" style="width:100%;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:14px"></textarea></div>'
   +'<div class="f2"><div class="f"><label for="imp-cur">Moneda</label><select id="imp-cur"><option value="auto">Detectar</option><option value="USD"'+(impMsgCur==='USD'?' selected':'')+'>USD</option><option value="COP"'+(impMsgCur==='COP'?' selected':'')+'>COP</option></select></div><div class="f"><label>&nbsp;</label><button class="btn" onclick="impReadText()">Leer</button></div></div>'
-  +'<div class="note" style="padding-bottom:0">Puedes pegar varios mensajes separados por una línea en blanco, o uno por línea.</div></div>'
+  +'<div class="note" style="padding-bottom:0">Puedes pegar varios mensajes separados por una línea en blanco, o uno por línea.</div></div></details>'
   +'<div class="sec">Archivo CSV del banco</div><div class="card">'
   +'<div class="f2"><div class="f"><label for="imp-ccur">Moneda</label><select id="imp-ccur" onchange="impOpt(\'currency\',this.value)"><option'+(impOpts.currency==='USD'?' selected':'')+'>USD</option><option'+(impOpts.currency==='COP'?' selected':'')+'>COP</option></select></div>'
   +'<div class="f"><label for="imp-dord">Fechas</label><select id="imp-dord" onchange="impOpt(\'dateOrder\',this.value)"><option value="auto"'+(impOpts.dateOrder==='auto'?' selected':'')+'>Automático</option><option value="mdy"'+(impOpts.dateOrder==='mdy'?' selected':'')+'>Mes/día/año</option><option value="dmy"'+(impOpts.dateOrder==='dmy'?' selected':'')+'>Día/mes/año</option></select></div></div>'
@@ -90,13 +147,13 @@ function rImportar(){
   +'<div class="note" style="padding:10px 0 0">Funciona con columnas Fecha, Descripción y Monto, o con Débito y Crédito separados. Los archivos no salen de tu celular.</div></div>'
   +'<div id="imp-review" style="margin-top:14px"></div>'
   +(last?'<div class="dash-actions"><button onclick="impUndo()">Deshacer última importación ('+last+')</button></div>':'')
-  +'<div class="sec">Apple Pay · captura automática</div><div class="card">'
-  +'<div class="warn" style="margin-bottom:10px"><b>Recomendado:</b> conecta la nube y el atajo envía cada pago directo a tus datos, sin Safari. Ve a <b>Más → Nube y dispositivos → Apple Pay</b>. Lo de abajo es la alternativa sin nube.</div>'
-  +'<p class="note" style="padding-top:0">En <b>Atajos → Automatización → Transacción</b> (se activa al pagar con Apple Pay):</p>'
+  +'<details class="more"><summary>Automatización avanzada <span>Opcional</span></summary><div class="card">'
+  +'<div class="note" style="padding-top:0"><b>No necesitas configurar esto.</b> Pegar aviso funciona con cualquier banco. Esta opción es solo para quien quiera experimentar con automatizaciones de iPhone.</div>'
+  +'<p class="note">En <b>Atajos → Automatización → Transacción</b>:</p>'
   +'<ol class="imp-steps"><li>Acción <b>Abrir URL</b>.</li><li>Escribe <code>'+esc(impSite())+'#add?monto=</code>, inserta la variable <b>Cantidad</b>, luego <code>&amp;desc=</code> y la variable <b>Comerciante</b>.</li><li>Elige <b>Ejecutar inmediatamente</b> si te lo permite.</li></ol>'
   +'<div class="warn" style="margin-bottom:10px"><b>Ojo con iOS:</b> los atajos abren el enlace en Safari, no en la app de tu pantalla de inicio, y las dos guardan sus datos por separado. Úsalo solo si trabajas desde Safari. Para la app instalada hace falta la versión con cuenta en la nube.</div>'
   +'<p class="note" style="padding-bottom:6px">La app se abre con el gasto ya lleno y solo tocas Guardar. Los datos viajan después del <b>#</b>, así que no llegan a ningún servidor. Parámetros: <code>monto</code>, <code>desc</code>, <code>moneda</code> (siempre USD, salvo que pongas <code>moneda=COP</code>), <code>fecha</code>, <code>tipo=ingreso</code>.</p>'
-  +'<button class="btn gh" style="width:100%" onclick="impCopyLink()">Copiar enlace de ejemplo</button></div>'
+  +'<button class="btn gh" style="width:100%" onclick="impCopyLink()">Copiar enlace de ejemplo</button></div></details>'
   +'<div class="sec">Exportar</div><div class="card"><button class="btn gh" style="width:100%;color:var(--tx)" onclick="impExportCSV()">Descargar todos los movimientos (CSV)</button></div>';
  impReview();
 }
